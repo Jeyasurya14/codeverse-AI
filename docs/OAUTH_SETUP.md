@@ -130,10 +130,32 @@ Restart the Expo dev server after changing `.env`.
 |-------|--------|
 | **"Invalid Redirect: must contain a domain"** (Google) | Do not use `codeverse-ai://`. Use **`https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`** in Authorized redirect URIs and in `.env` as `EXPO_PUBLIC_GOOGLE_REDIRECT_URI`. |
 | "Google/GitHub sign-in is not configured" | Set `EXPO_PUBLIC_GOOGLE_CLIENT_ID` / `EXPO_PUBLIC_GITHUB_CLIENT_ID` in app `.env` and restart Expo. |
+| **Error 400: redirect_uri_mismatch** | See "redirect_uri_mismatch" below. |
 | **"Access blocked: Authorization Error" / 400 invalid_request** | See "Access blocked (Google)" below. |
 | "Sign-in failed" / 400 from backend | Redirect URI in Google/GitHub must match **exactly** what the app sends (Expo proxy URL or your scheme). |
 | "Google sign-in is not configured" (backend) | Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the backend (e.g. Render env). |
 | Redirect doesn’t open app | In Expo Go, redirect must be `https://auth.expo.io/@USERNAME/codeverse-ai`. Use `useProxy: true` in the app (already set in `useOAuth.ts`). |
+
+### Error 400: redirect_uri_mismatch
+
+Google rejects the request because the `redirect_uri` in the request does not **exactly** match any "Authorized redirect URIs" in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) for the **same OAuth client** whose Client ID is in your app.
+
+1. **See what the app sends**  
+   In the Expo dev server / Metro logs when you tap "Continue with Google", look for:  
+   `[OAuth] Using backend callback – add this EXACT URL in Google Console...`  
+   Copy that URL exactly (no trailing slash).
+
+2. **Add both URIs in the same OAuth client**  
+   In Google Cloud Console → Credentials → your **Web application** client (the one whose Client ID is in `.env` as `EXPO_PUBLIC_GOOGLE_CLIENT_ID`), under **Authorized redirect URIs** add **both** (if not already):
+   - `https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`
+   - `https://codeverse-api-429f.onrender.com/auth/callback/google`  
+   No trailing slash, exact spelling. Click **Save**.
+
+3. **Restart Expo so env is applied**  
+   Stop the dev server and run `npx expo start -c` so `EXPO_PUBLIC_API_URL` is picked up and the app uses the backend callback URL.
+
+4. **One client only**  
+   If you have multiple OAuth client IDs, the app uses the one in `EXPO_PUBLIC_GOOGLE_CLIENT_ID`. The redirect URIs above must be on **that** client.
 
 ### "Access blocked: Authorization Error" (Google)
 

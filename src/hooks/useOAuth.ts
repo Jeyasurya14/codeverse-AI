@@ -26,7 +26,12 @@ let hasLoggedRedirectUri = false;
  */
 function getRedirectUri(provider?: 'google' | 'github'): string {
   if (BASE_URL && provider) {
-    return `${BASE_URL.replace(/\/$/, '')}/auth/callback/${provider}`;
+    const uri = `${BASE_URL.replace(/\/$/, '')}/auth/callback/${provider}`;
+    if (__DEV__ && !hasLoggedRedirectUri) {
+      hasLoggedRedirectUri = true;
+      console.log('[OAuth] Using backend callback – add this EXACT URL in Google Console → Authorized redirect URIs:', uri);
+    }
+    return uri;
   }
   const envUri = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
   if (envUri) {
