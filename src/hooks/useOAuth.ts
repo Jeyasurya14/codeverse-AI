@@ -109,6 +109,11 @@ export function useGoogleAuth() {
         const url = new URL(authUrl);
         url.searchParams.set('state', stateWithRedirect);
         authUrl = url.toString();
+        // Debug: log exact redirect_uri sent to Google (compare with Google Console)
+        const sentRedirectUri = url.searchParams.get('redirect_uri') ?? '';
+        if (__DEV__) {
+          console.log('[OAuth] redirect_uri sent to Google (copy exactly to Console):', sentRedirectUri);
+        }
         await AsyncStorage.setItem(STORAGE_KEYS.PENDING_OAUTH, JSON.stringify({
           provider: 'google',
           codeVerifier: request.codeVerifier,
