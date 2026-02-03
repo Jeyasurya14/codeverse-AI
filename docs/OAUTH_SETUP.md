@@ -168,3 +168,14 @@ This message is shown by **Expo’s auth proxy** when it cannot hand the result 
 
 3. **Backend exchange failing after redirect**  
    If the handoff sometimes works but you still see an error, the backend may be failing (e.g. wrong `GOOGLE_CLIENT_SECRET` or `redirect_uri` mismatch). Check Render logs for `/auth/exchange` errors and ensure Render env has `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the same redirect URI the app uses.
+
+### "Loading for a long time" after tapping Continue (backend callback flow)
+
+When using the backend callback URL (`EXPO_PUBLIC_API_URL` set), the browser is sent to your backend after you tap **Continue** on Google/GitHub. Two things can make it feel stuck:
+
+1. **Render cold start**  
+   On Render’s free tier the service sleeps after inactivity. The **first** request to `/auth/callback/google` (or `/github`) can take **30–60 seconds** while the server starts. The browser will show a loading state until the backend responds.  
+   - **What to do:** Wait up to a minute, or “warm up” the backend first by opening `https://YOUR-BACKEND.onrender.com/health` (or any GET route) in a browser, then try sign-in again.
+
+2. **Redirect back to the app**  
+   Once the backend responds, it shows a “Sign-in successful. Opening app…” page and then redirects to your app. If the app doesn’t open automatically, use the **“Open app”** link on that page. Ensure the app is installed and in the background (not force-closed) when you tap Continue.

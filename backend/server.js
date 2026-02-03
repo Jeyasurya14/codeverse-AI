@@ -123,6 +123,19 @@ function getRedirectBack(state) {
   return APP_AUTH_SCHEME;
 }
 
+/** Send HTML that redirects to the app (shows message + fallback link so user isn't stuck on a blank load). */
+function sendRedirectToApp(res, target) {
+  const escaped = target.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  res.set('Content-Type', 'text/html; charset=utf-8');
+  res.send(
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+    `<meta http-equiv="refresh" content="2;url=${escaped}">` +
+    `<title>Sign-in successful</title><style>body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;background:#1a1a2e;color:#eee;}a{color:#6c9eff;margin-top:1rem;}</style></head><body>` +
+    `<p>Sign-in successful. Opening app…</p>` +
+    `<p><a href="${escaped}">Open app</a> if nothing happens.</p></body></html>`
+  );
+}
+
 /**
  * GET /auth/callback/google?code=...&state=...
  * Redirects browser to app (or Expo Go exp:// URL from state) so the app can exchange the code.
@@ -137,7 +150,7 @@ app.get('/auth/callback/google', (req, res) => {
   const params = new URLSearchParams({ code, provider: 'google' });
   if (state && typeof state === 'string') params.set('state', state);
   const target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
-  return res.redirect(302, target);
+  return sendRedirectToApp(res, target);
 });
 
 /**
@@ -154,7 +167,7 @@ app.get('/auth/callback/github', (req, res) => {
   const params = new URLSearchParams({ code, provider: 'github' });
   if (state && typeof state === 'string') params.set('state', state);
   const target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
-  return res.redirect(302, target);
+  return sendRedirectToApp(res, target);
 });
 
 /**
