@@ -48,9 +48,9 @@ In the same screen, open **Environment** and add:
 |-----|--------|--------|
 | `OPENAI_API_KEY` | `sk-...` | Your OpenAI API key. Required for real AI. |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Optional. Default is `gpt-4o-mini`. |
-| `GOOGLE_CLIENT_ID` | from Google Console | Required for Google sign-in. Same as in app. |
-| `GOOGLE_CLIENT_SECRET` | from Google Console | Required for Google sign-in. |
-| `GITHUB_CLIENT_ID` | from GitHub OAuth App | Required for GitHub sign-in. Same as in app. |
+| `GOOGLE_CLIENT_ID` | from Google Console | Same value as app’s `EXPO_PUBLIC_GOOGLE_CLIENT_ID` (e.g. `…apps.googleusercontent.com`). |
+| `GOOGLE_CLIENT_SECRET` | from Google Console | Client secret from the same OAuth client. |
+| `GITHUB_CLIENT_ID` | from GitHub OAuth App | Same value as app’s `EXPO_PUBLIC_GITHUB_CLIENT_ID`. |
 | `GITHUB_CLIENT_SECRET` | from GitHub OAuth App | Required for GitHub sign-in. |
 | `JWT_SECRET` | long random string | **Required in production.** At least 32 characters (e.g. `openssl rand -hex 32`). |
 | `NODE_ENV` | `production` | **Set in production.** Enables strict JWT check and production rate limits. |
