@@ -1,21 +1,36 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import Constants from 'expo-constants';
 import { exchangeOAuthCode } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import type { User } from '../types';
 
 WebBrowser.maybeCompleteAuthSession();
 
-/** Optional: set EXPO_PUBLIC_GOOGLE_REDIRECT_URI in .env to match Google Console exactly (e.g. https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai). */
+/** Use Expo proxy only in Expo Go; in standalone/Play Store builds use direct deep link (codeverse-ai://) to avoid "Something went wrong" on auth.expo.io. */
 function getRedirectUri(): string {
   const envUri = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
   if (envUri) return envUri;
-  const uri = AuthSession.makeRedirectUri({ useProxy: true });
+  const isExpoGo = Constants.appOwnership === 'expo';
+  const uri = AuthSession.makeRedirectUri({ useProxy: isExpoGo });
   if (__DEV__) {
-    console.log('[OAuth] Use this exact URL in Google & GitHub as "Authorized redirect URI":', uri);
+    console.log('[OAuth] Redirect URI (add to Google & GitHub):', uri);
   }
   return uri;
+}
+
+/** When app returns from browser, complete the auth session so promptAsync() can receive the result. */
+function useMaybeCompleteAuthSession() {
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
+      if (state === 'active') {
+        WebBrowser.maybeCompleteAuthSession();
+      }
+    });
+    return () => sub.remove();
+  }, []);
 }
 
 const GITHUB_DISCOVERY = {
@@ -23,6 +38,7 @@ const GITHUB_DISCOVERY = {
 };
 
 export function useGoogleAuth() {
+  useMaybeCompleteAuthSession();
   const { signIn } = useAuth();
   const redirectUri = getRedirectUri();
   const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
@@ -34,7 +50,7 @@ export function useGoogleAuth() {
       scopes: ['openid', 'profile', 'email'],
       responseType: AuthSession.ResponseType.Code,
       usePKCE: true,
-      extraParams: { access_type: 'offline', prompt: 'consent' },
+      extraParams: { access_type: 'offline', prompt: 'select_account' },
     },
     discovery
   );
@@ -44,10 +60,18 @@ export function useGoogleAuth() {
       throw new Error('Google sign-in is not configured. Set EXPO_PUBLIC_GOOGLE_CLIENT_ID.');
     }
     if (!request) throw new Error('Auth is still loading.');
+    try {
+      await WebBrowser.warmUpAsync();
+    } catch {
+      // ignore warm-up failure
+    }
     const result = await promptAsync();
     if (result.type !== 'success' || !result.params.code) {
       if (result.type === 'dismiss' || result.type === 'cancel') return;
-      throw new Error('Google sign-in was cancelled or failed.');
+      if (result.type === 'error' && result.error?.message) {
+        throw new Error(result.error.message);
+      }
+      throw new Error('Google sign-in was cancelled or failed. Please try again.');
     }
     const code = result.params.code;
     const codeVerifier = request.codeVerifier;
@@ -66,6 +90,7 @@ export function useGoogleAuth() {
 }
 
 export function useGithubAuth() {
+  useMaybeCompleteAuthSession();
   const { signIn } = useAuth();
   const redirectUri = getRedirectUri();
 
@@ -88,7 +113,10 @@ export function useGithubAuth() {
     const result = await promptAsync();
     if (result.type !== 'success' || !result.params.code) {
       if (result.type === 'dismiss' || result.type === 'cancel') return;
-      throw new Error('GitHub sign-in was cancelled or failed.');
+      if (result.type === 'error' && (result as { error?: { message?: string } }).error?.message) {
+        throw new Error((result as { error: { message: string } }).error.message);
+      }
+      throw new Error('GitHub sign-in was cancelled or failed. Please try again.');
     }
     const code = result.params.code;
     const codeVerifier = request.codeVerifier;

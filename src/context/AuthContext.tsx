@@ -32,7 +32,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token) setAuthTokens({ accessToken: token });
         if (onboarding === 'true') setIsOnboardingDone(true);
       } catch (e) {
-        console.warn('Auth restore failed', e);
+        if (__DEV__) console.warn('Auth restore failed', e);
       } finally {
         setIsLoading(false);
       }

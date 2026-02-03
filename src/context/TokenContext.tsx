@@ -33,7 +33,7 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
       }
       if (purchased) setPurchasedTotal(parseInt(purchased, 10));
     } catch (e) {
-      console.warn('Token load failed', e);
+      __DEV__ && console.warn('Token load failed', e);
     }
   };
 

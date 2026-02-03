@@ -26,7 +26,7 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
         const raw = await AsyncStorage.getItem(STORAGE_KEYS.LAST_READ_ARTICLE);
         if (raw) setLastReadState(JSON.parse(raw));
       } catch (e) {
-        console.warn('Progress load failed', e);
+        __DEV__ && console.warn('Progress load failed', e);
       }
     })();
   }, []);

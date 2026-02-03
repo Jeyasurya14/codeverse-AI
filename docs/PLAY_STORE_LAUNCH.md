@@ -133,6 +133,18 @@ After the **first upload is done manually**, you can use **EAS Submit** for futu
 
 ---
 
+## 9. Production-grade checklist (before launch)
+
+- [ ] **Backend:** Deployed with `NODE_ENV=production`; `JWT_SECRET` (≥32 chars), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET` set on Render. See [PRODUCTION.md](./PRODUCTION.md) and [DEPLOY_RENDER.md](./DEPLOY_RENDER.md).
+- [ ] **App env (EAS production):** `EXPO_PUBLIC_API_URL` (your backend URL), `EXPO_PUBLIC_GOOGLE_CLIENT_ID`, `EXPO_PUBLIC_GITHUB_CLIENT_ID` set in EAS for **production** so the built app uses them.
+- [ ] **OAuth redirect for standalone:** In Google Cloud Console and GitHub OAuth App, add **both** redirect URIs so login works in Expo Go and in the store build:
+  - `https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai` (Expo Go)
+  - `codeverse-ai://` (standalone/Play Store build; the app uses direct deep link in production).
+- [ ] **No dev leaks:** No `console.log`/`console.warn` in production code paths (they are gated with `__DEV__`).
+- [ ] **Test the production build:** Install the built AAB/APK (or from internal testing), then test: Google sign-in, GitHub sign-in, AI mentor, and that the app does not show "App is not configured" (confirms `EXPO_PUBLIC_API_URL` is set in EAS production).
+
+---
+
 ## Checklist
 
 - [ ] Google Play Developer account ($25) and app created in Play Console.
@@ -142,5 +154,6 @@ After the **first upload is done manually**, you can use **EAS Submit** for futu
 - [ ] Store listing: short + full description, icon, feature graphic, screenshots.
 - [ ] Content rating, privacy policy URL, target audience completed.
 - [ ] Release created and rolled out to Production (or Internal testing first).
+- [ ] Production-grade checklist (Section 9) completed.
 
 For **Expo/EAS build and env** details, see [EXPO_PRODUCTION.md](./EXPO_PRODUCTION.md).

@@ -1,9 +1,10 @@
 /**
- * API service for CodeVerse backend (PostgreSQL + REST/GraphQL).
- * Replace base URL with your deployed backend.
+ * API service for CodeVerse backend.
+ * EXPO_PUBLIC_API_URL must be set for production (EAS env or .env).
  */
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL ?? 'https://api.codeverse.app';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
+const API_TIMEOUT_MS = 30000;
 
 type AuthTokens = {
   accessToken: string;
@@ -16,11 +17,21 @@ export function setAuthTokens(tokens: AuthTokens | null) {
   authTokens = tokens;
 }
 
+function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timeout));
+}
+
 export async function api<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  if (!BASE_URL) {
+    throw new Error('App is not configured. Please update and restart.');
+  }
+  const url = `${BASE_URL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
     ...(authTokens?.accessToken && {
@@ -28,12 +39,21 @@ export async function api<T>(
     }),
     ...options.headers,
   };
-  const res = await fetch(url, { ...options, headers });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as { message?: string }).message ?? res.statusText);
+  try {
+    const res = await fetchWithTimeout(url, { ...options, headers });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = (err as { message?: string }).message ?? res.statusText;
+      throw new Error(msg || 'Request failed.');
+    }
+    return res.json();
+  } catch (e) {
+    if (e instanceof Error) {
+      if (e.name === 'AbortError') throw new Error('Request timed out. Try again.');
+      throw e;
+    }
+    throw new Error('Network error. Check your connection.');
   }
-  return res.json();
 }
 
 // Auth (OAuth exchange – backend exchanges code for tokens and returns user + JWT)
@@ -70,31 +90,35 @@ export async function getArticles(languageId: string) {
 //   Errors: 402 when insufficient tokens, 4xx/5xx for other failures.
 export type SendAIMessageResult = { reply: string; tokensUsed: number };
 
+const AI_TIMEOUT_MS = 60000;
+
 export async function sendAIMessage(message: string, context?: string): Promise<SendAIMessageResult> {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  const useBackend = baseUrl && baseUrl !== '' && !baseUrl.includes('codeverse.app');
-
-  if (!useBackend) {
-    // No backend configured or placeholder URL: use mock so app works offline/demo
-    await new Promise((r) => setTimeout(r, 800));
+  if (!baseUrl) {
+    await new Promise((r) => setTimeout(r, 600));
     return {
-      reply:
-        "I'm your AI mentor. To enable real AI replies, set EXPO_PUBLIC_API_URL to your backend and implement POST /ai/chat (see api.ts). I can still help you think through concepts—try asking about JavaScript, Python, or interview prep!",
-      tokensUsed: 50,
+      reply: "AI mentor is not configured. Please check your connection and try again later.",
+      tokensUsed: 0,
     };
   }
 
+  const url = `${baseUrl.replace(/\/$/, '')}/ai/chat`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
   try {
-    const res = await fetch(`${baseUrl}/ai/chat`, {
+    const res = await fetch(url, {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         ...(authTokens?.accessToken && {
           Authorization: `Bearer ${authTokens.accessToken}`,
         }),
       },
-      body: JSON.stringify({ message, context }),
+      body: JSON.stringify({ message: String(message).slice(0, 16000), context: context ? String(context).slice(0, 2000) : undefined }),
     });
+    clearTimeout(timeout);
 
     const data = await res.json().catch(() => ({}));
 
@@ -103,14 +127,18 @@ export async function sendAIMessage(message: string, context?: string): Promise<
       if (res.status === 402) {
         throw new Error('Insufficient tokens. Please recharge to continue.');
       }
-      throw new Error(msg);
+      throw new Error(msg || 'AI request failed.');
     }
 
     const reply = (data as { reply?: string }).reply ?? '';
     const tokensUsed = Math.max(0, Number((data as { tokensUsed?: number }).tokensUsed) || 50);
     return { reply, tokensUsed };
   } catch (e) {
-    if (e instanceof Error) throw e;
+    clearTimeout(timeout);
+    if (e instanceof Error) {
+      if (e.name === 'AbortError') throw new Error('Request took too long. Try again.');
+      throw e;
+    }
     throw new Error('Unable to reach AI. Check your connection and try again.');
   }
 }

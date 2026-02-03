@@ -144,3 +144,19 @@ This usually means one of:
 
 3. **OAuth client type**  
    For Expo Go with the proxy, the Google OAuth client must be **Web application**. Create a Web application client and use the Expo proxy URL above as the redirect URI.
+
+### "Something went wrong trying to finish signing in" (auth.expo.io)
+
+This message is shown by **Expo’s auth proxy** when it cannot hand the result back to your app. Common causes:
+
+1. **Browser / WebView blocking the handoff**  
+   The proxy uses cookies to redirect back to the app; strict tracking prevention (e.g. in some in-app browsers) can block this. Try:
+   - Closing the auth tab and signing in again.
+   - Using a different device or simulator.
+   - For a more reliable flow, use a **development build** with a custom URL scheme and `useProxy: false` (see **docs/EXPO_PRODUCTION.md**).
+
+2. **App was closed or backgrounded**  
+   Keep the app in the foreground (or at least not force-closed) until the browser redirects back. If the app is killed, the proxy has nowhere to send the result.
+
+3. **Backend exchange failing after redirect**  
+   If the handoff sometimes works but you still see an error, the backend may be failing (e.g. wrong `GOOGLE_CLIENT_SECRET` or `redirect_uri` mismatch). Check Render logs for `/auth/exchange` errors and ensure Render env has `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and the same redirect URI the app uses.

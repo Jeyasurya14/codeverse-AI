@@ -28,7 +28,7 @@ export function BookmarksProvider({ children }: { children: React.ReactNode }) {
         const raw = await AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS);
         if (raw) setBookmarks(JSON.parse(raw));
       } catch (e) {
-        console.warn('Bookmarks load failed', e);
+        __DEV__ && console.warn('Bookmarks load failed', e);
       }
     })();
   }, []);

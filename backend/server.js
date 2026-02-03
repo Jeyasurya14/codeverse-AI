@@ -109,6 +109,14 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
     if (provider !== 'google' && provider !== 'github') {
       return res.status(400).json({ message: 'Provider must be google or github.' });
     }
+    const redirect = typeof redirectUri === 'string' ? redirectUri.trim() : '';
+    if (isProduction && !redirect) {
+      return res.status(400).json({ message: 'Missing redirect URI.' });
+    }
+    if (redirect.length > 512) {
+      return res.status(400).json({ message: 'Invalid redirect URI.' });
+    }
+    const finalRedirectUri = redirect || 'http://localhost';
 
     let profile;
     if (provider === 'google') {
@@ -121,10 +129,10 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
         body: new URLSearchParams({
           client_id: GOOGLE_CLIENT_ID,
           client_secret: GOOGLE_CLIENT_SECRET,
-          code,
+          code: String(code).slice(0, 2048),
           grant_type: 'authorization_code',
-          redirect_uri: redirectUri || 'http://localhost',
-          ...(codeVerifier && { code_verifier: codeVerifier }),
+          redirect_uri: finalRedirectUri,
+          ...(codeVerifier && typeof codeVerifier === 'string' && { code_verifier: codeVerifier.slice(0, 256) }),
         }),
       });
       if (!tokenRes.ok) {
@@ -160,8 +168,8 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
         body: JSON.stringify({
           client_id: GITHUB_CLIENT_ID,
           client_secret: GITHUB_CLIENT_SECRET,
-          code,
-          redirect_uri: redirectUri || 'http://localhost',
+          code: String(code).slice(0, 2048),
+          redirect_uri: finalRedirectUri,
         }),
       });
       if (!tokenRes.ok) {
