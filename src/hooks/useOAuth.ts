@@ -20,16 +20,20 @@ function normalizeRedirectUri(uri: string): string {
 
 let hasLoggedRedirectUri = false;
 
+/** True when running inside Expo Go (not a standalone build). */
+const isExpoGo = Constants.appOwnership === 'expo';
+
 /**
- * Redirect URI for OAuth. When BASE_URL is set we use backend callback for all (Expo Go and standalone) to avoid auth.expo.io proxy.
- * Otherwise use proxy or EXPO_PUBLIC_GOOGLE_REDIRECT_URI for Expo Go.
+ * Redirect URI for OAuth.
+ * - Expo Go: use Expo proxy (https://auth.expo.io/...) so Google accepts it; add that URL in Google Console.
+ * - Standalone + BASE_URL: use backend callback so we can redirect back via deep link.
  */
 function getRedirectUri(provider?: 'google' | 'github'): string {
-  if (BASE_URL && provider) {
+  if (!isExpoGo && BASE_URL && provider) {
     const uri = `${BASE_URL.replace(/\/$/, '')}/auth/callback/${provider}`;
     if (__DEV__ && !hasLoggedRedirectUri) {
       hasLoggedRedirectUri = true;
-      console.log('[OAuth] Using backend callback – add this EXACT URL in Google Console → Authorized redirect URIs:', uri);
+      console.log('[OAuth] Using backend callback – add this in Google Console:', uri);
     }
     return uri;
   }
@@ -38,7 +42,7 @@ function getRedirectUri(provider?: 'google' | 'github'): string {
     const normalized = normalizeRedirectUri(envUri);
     if (__DEV__ && !hasLoggedRedirectUri) {
       hasLoggedRedirectUri = true;
-      console.log('[OAuth] Redirect URI (from env):', normalized);
+      console.log('[OAuth] Redirect URI (Expo Go / proxy):', normalized);
     }
     return normalized;
   }
@@ -101,7 +105,7 @@ export function useGoogleAuth() {
     }
     if (!request) throw new Error('Auth is still loading.');
 
-    if (BASE_URL) {
+    if (!isExpoGo && BASE_URL) {
       try {
         let authUrl = await request.makeAuthUrlAsync(discovery);
         const redirectBack = getRedirectBackUrl();
@@ -109,10 +113,8 @@ export function useGoogleAuth() {
         const url = new URL(authUrl);
         url.searchParams.set('state', stateWithRedirect);
         authUrl = url.toString();
-        // Debug: log exact redirect_uri sent to Google (compare with Google Console)
-        const sentRedirectUri = url.searchParams.get('redirect_uri') ?? '';
         if (__DEV__) {
-          console.log('[OAuth] redirect_uri sent to Google (copy exactly to Console):', sentRedirectUri);
+          console.log('[OAuth] redirect_uri sent to Google:', url.searchParams.get('redirect_uri') ?? '');
         }
         await AsyncStorage.setItem(STORAGE_KEYS.PENDING_OAUTH, JSON.stringify({
           provider: 'google',
@@ -182,7 +184,7 @@ export function useGithubAuth() {
     }
     if (!request) throw new Error('Auth is still loading.');
 
-    if (BASE_URL) {
+    if (!isExpoGo && BASE_URL) {
       try {
         let authUrl = await request.makeAuthUrlAsync(GITHUB_DISCOVERY);
         const redirectBack = getRedirectBackUrl();
