@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
 import { exchangeOAuthCode } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { STORAGE_KEYS } from '../constants/theme';
@@ -13,7 +14,7 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
  * Supports codeverse-ai://auth?code=... and exp://.../auth?code=... (Expo Go).
  */
 export function AuthDeepLinkHandler() {
-  const { signIn } = useAuth();
+  const { signIn, completeOnboarding } = useAuth();
 
   useEffect(() => {
     if (!BASE_URL) return;
@@ -52,6 +53,12 @@ export function AuthDeepLinkHandler() {
           provider,
         };
         await signIn(appUser, accessToken);
+        await completeOnboarding();
+        try {
+          await WebBrowser.dismissBrowser();
+        } catch {
+          // dismissBrowser not available on all platforms (e.g. Android)
+        }
       } catch {
         // User can retry sign-in
       }
@@ -60,7 +67,7 @@ export function AuthDeepLinkHandler() {
     Linking.getInitialURL().then(handleUrl);
     const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     return () => sub.remove();
-  }, [signIn]);
+  }, [signIn, completeOnboarding]);
 
   return null;
 }

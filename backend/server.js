@@ -123,16 +123,17 @@ function getRedirectBack(state) {
   return APP_AUTH_SCHEME;
 }
 
-/** Send HTML that redirects to the app (shows message + fallback link so user isn't stuck on a blank load). */
+/** Send HTML that redirects to the app immediately so the app opens and user lands on home. */
 function sendRedirectToApp(res, target) {
   const escaped = target.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const scriptUrl = JSON.stringify(target);
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.send(
     `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<meta http-equiv="refresh" content="2;url=${escaped}">` +
-    `<title>Sign-in successful</title><style>body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;background:#1a1a2e;color:#eee;}a{color:#6c9eff;margin-top:1rem;}</style></head><body>` +
-    `<p>Sign-in successful. Opening app…</p>` +
-    `<p><a href="${escaped}">Open app</a> if nothing happens.</p></body></html>`
+    `<meta http-equiv="refresh" content="0;url=${escaped}">` +
+    `<title>Opening app…</title><style>body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;background:#1a1a2e;color:#eee;}a{color:#6c9eff;margin-top:1rem;}</style></head><body>` +
+    `<p>Opening app…</p><p><a href="${escaped}">Open app</a> if nothing happens.</p>` +
+    `<script>try{var u=${scriptUrl};window.location.replace(u);}catch(e){}</script></body></html>`
   );
 }
 
