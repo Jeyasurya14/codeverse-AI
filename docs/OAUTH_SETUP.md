@@ -123,6 +123,24 @@ Restart the Expo dev server after changing `.env`.
 | Issue | Check |
 |-------|--------|
 | "Google/GitHub sign-in is not configured" | Set `EXPO_PUBLIC_GOOGLE_CLIENT_ID` / `EXPO_PUBLIC_GITHUB_CLIENT_ID` in app `.env` and restart Expo. |
+| **"Access blocked: Authorization Error" / 400 invalid_request** | See "Access blocked (Google)" below. |
 | "Sign-in failed" / 400 from backend | Redirect URI in Google/GitHub must match **exactly** what the app sends (Expo proxy URL or your scheme). |
 | "Google sign-in is not configured" (backend) | Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` on the backend (e.g. Render env). |
 | Redirect doesn’t open app | In Expo Go, redirect must be `https://auth.expo.io/@USERNAME/codeverse-ai`. Use `useProxy: true` in the app (already set in `useOAuth.ts`). |
+
+### "Access blocked: Authorization Error" (Google)
+
+This usually means one of:
+
+1. **Redirect URI mismatch**  
+   The `redirect_uri` sent to Google must match **exactly** (no trailing slash) one of the "Authorized redirect URIs" in [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → your OAuth client.
+
+   - In **Expo Go**, the URL is `https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai` (replace `YOUR_EXPO_USERNAME` with your Expo account from `npx expo whoami` or [expo.dev](https://expo.dev) profile).
+   - Add that **exact** URL in Google Console. If the app's computed redirect differs, set `EXPO_PUBLIC_GOOGLE_REDIRECT_URI` in app `.env` to the same URL you added in Google Console, then restart Expo.
+   - In dev, the app logs the redirect URI to the console: look for `[OAuth] Use this exact URL...` and add that URL in Google Console.
+
+2. **App in Testing mode**  
+   If the OAuth consent screen is in **Testing** mode, only "Test users" you added can sign in. Add your Google account in [OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent) → Test users, or publish the app for production.
+
+3. **OAuth client type**  
+   For Expo Go with the proxy, the Google OAuth client must be **Web application**. Create a Web application client and use the Expo proxy URL above as the redirect URI.

@@ -7,13 +7,24 @@ import type { User } from '../types';
 
 WebBrowser.maybeCompleteAuthSession();
 
+/** Optional: set EXPO_PUBLIC_GOOGLE_REDIRECT_URI in .env to match Google Console exactly (e.g. https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai). */
+function getRedirectUri(): string {
+  const envUri = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
+  if (envUri) return envUri;
+  const uri = AuthSession.makeRedirectUri({ useProxy: true });
+  if (__DEV__) {
+    console.log('[OAuth] Use this exact URL in Google & GitHub as "Authorized redirect URI":', uri);
+  }
+  return uri;
+}
+
 const GITHUB_DISCOVERY = {
   authorizationEndpoint: 'https://github.com/login/oauth/authorize',
 };
 
 export function useGoogleAuth() {
   const { signIn } = useAuth();
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+  const redirectUri = getRedirectUri();
   const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
 
   const [request, , promptAsync] = AuthSession.useAuthRequest(
@@ -56,7 +67,7 @@ export function useGoogleAuth() {
 
 export function useGithubAuth() {
   const { signIn } = useAuth();
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
+  const redirectUri = getRedirectUri();
 
   const [request, , promptAsync] = AuthSession.useAuthRequest(
     {
