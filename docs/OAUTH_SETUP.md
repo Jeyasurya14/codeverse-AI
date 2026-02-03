@@ -4,13 +4,21 @@ To make "Continue with Google" and "Continue with GitHub" work, configure OAuth 
 
 ---
 
-## How to get your Expo Go redirect URL
+## How to get your redirect URL
 
-You need this **exact** URL as the redirect/callback URI in Google and GitHub OAuth:
+**Important:** Google’s “Web application” OAuth client **only accepts URIs with a domain** (e.g. `https://...`). Do **not** use `codeverse-ai://` in Google — you will get “Invalid Redirect: must contain a domain.” Use the **Expo proxy URL** below instead.
 
-```
-https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai
-```
+### Use the Expo proxy URL (recommended)
+
+1. Get your Expo username: run `npx expo whoami` (or see [expo.dev](https://expo.dev) profile).
+2. Build the redirect URL: **`https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`** (no trailing slash).  
+   Example: if your username is `learnmadetamil`, use **`https://auth.expo.io/@learnmadetamil/codeverse-ai`**.
+3. Add this **exact** URL in:
+   - **Google Cloud Console** → OAuth client → Authorized redirect URIs
+   - **GitHub** → OAuth App → Authorization callback URL
+4. In the app `.env`, set: **`EXPO_PUBLIC_GOOGLE_REDIRECT_URI=https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`** (same value, no trailing slash).
+
+The app uses the proxy in Expo Go and when this env var is set, so sign-in will redirect back to the app via Expo’s proxy.
 
 **Step 1 – Get your Expo username**
 
@@ -66,14 +74,14 @@ The backend uses these to exchange the authorization code for tokens and to sign
 5. Application type:
    - **Web application** (works with Expo’s redirect proxy in Expo Go).
    - Or **iOS** / **Android** if you use a dev/standalone build.
-6. **Authorized redirect URIs** – add **exactly** one of:
-   - **Expo Go**: `https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`  
-     (Replace `YOUR_EXPO_USERNAME` with your Expo account username; find it in [expo.dev](https://expo.dev) profile.)
-   - **Dev/standalone**: your app scheme, e.g. `codeverse-ai://` or `exp://...`.
-7. Copy the **Client ID** into:
+6. **Authorized redirect URIs** – add **both** (so login works in Expo Go and in dev/production builds):
+   - **`https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`** (Expo Go; replace with your Expo username).
+   - **`https://YOUR-BACKEND.onrender.com/auth/callback/google`** (backend callback; replace with your real backend URL, no trailing slash). This avoids the "Something went wrong" proxy error.
+7. **Authorised JavaScript origins** – add **`https://auth.expo.io`** and your backend origin, e.g. **`https://YOUR-BACKEND.onrender.com`**.
+8. Copy the **Client ID** into:
    - App: `.env` → `EXPO_PUBLIC_GOOGLE_CLIENT_ID`
    - Backend: `GOOGLE_CLIENT_ID`
-8. Copy the **Client secret** into the backend only: `GOOGLE_CLIENT_SECRET`.
+9. Copy the **Client secret** into the backend only: `GOOGLE_CLIENT_SECRET`.
 
 ---
 
@@ -83,9 +91,7 @@ The backend uses these to exchange the authorization code for tokens and to sign
 2. **New OAuth App**.
 3. **Application name**: e.g. CodeVerse.
 4. **Homepage URL**: e.g. `https://your-app.com` or `https://expo.dev`.
-5. **Authorization callback URL** – add **exactly** one of:
-   - **Expo Go**: `https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`
-   - **Dev/standalone**: your app scheme, e.g. `codeverse://`.
+5. **Authorization callback URL** – add **both** (same as Google): `https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai` and **`https://YOUR-BACKEND.onrender.com/auth/callback/github`**.
 6. Copy the **Client ID** into:
    - App: `.env` → `EXPO_PUBLIC_GITHUB_CLIENT_ID`
    - Backend: `GITHUB_CLIENT_ID`
@@ -122,6 +128,7 @@ Restart the Expo dev server after changing `.env`.
 
 | Issue | Check |
 |-------|--------|
+| **"Invalid Redirect: must contain a domain"** (Google) | Do not use `codeverse-ai://`. Use **`https://auth.expo.io/@YOUR_EXPO_USERNAME/codeverse-ai`** in Authorized redirect URIs and in `.env` as `EXPO_PUBLIC_GOOGLE_REDIRECT_URI`. |
 | "Google/GitHub sign-in is not configured" | Set `EXPO_PUBLIC_GOOGLE_CLIENT_ID` / `EXPO_PUBLIC_GITHUB_CLIENT_ID` in app `.env` and restart Expo. |
 | **"Access blocked: Authorization Error" / 400 invalid_request** | See "Access blocked (Google)" below. |
 | "Sign-in failed" / 400 from backend | Redirect URI in Google/GitHub must match **exactly** what the app sends (Expo proxy URL or your scheme). |
@@ -150,10 +157,11 @@ This usually means one of:
 This message is shown by **Expo’s auth proxy** when it cannot hand the result back to your app. Common causes:
 
 1. **Browser / WebView blocking the handoff**  
-   The proxy uses cookies to redirect back to the app; strict tracking prevention (e.g. in some in-app browsers) can block this. Try:
-   - Closing the auth tab and signing in again.
-   - Using a different device or simulator.
-   - For a more reliable flow, use a **development build** with a custom URL scheme and `useProxy: false` (see **docs/EXPO_PRODUCTION.md**).
+   The proxy uses cookies to redirect back to the app; strict tracking prevention (e.g. on Android) can block this. Try:
+   - **Retry:** Close the auth screen, keep the app in the foreground, and tap "Continue with Google" again.
+   - **One attempt at a time:** Wait for the previous attempt to fully close before trying again.
+   - **Different device or emulator:** Sometimes one device/emulator works better.
+   - **Development build:** For a reliable flow without the proxy, create a **development build** (not Expo Go) and use direct redirect; see **docs/EXPO_PRODUCTION.md**. In Expo Go the proxy is required for Google (Google only accepts https redirect URIs).
 
 2. **App was closed or backgrounded**  
    Keep the app in the foreground (or at least not force-closed) until the browser redirects back. If the app is killed, the proxy has nowhere to send the result.

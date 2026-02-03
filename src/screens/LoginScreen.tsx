@@ -7,6 +7,18 @@ import { GradientIllustration } from '../components/GradientIllustration';
 import { useGoogleAuth, useGithubAuth } from '../hooks/useOAuth';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
 
+const FRIENDLY_MESSAGES: Record<string, string> = {
+  'Request timed out. Try again.': 'Connection timed out. Check your network and try again.',
+  'Network error. Check your connection.': 'No connection. Check Wi‑Fi or mobile data and try again.',
+  'App is not configured. Please update and restart.': 'Sign-in is not set up yet. Please try again later.',
+  'Google sign-in failed. Try again.': 'Google sign-in failed. Make sure the app is allowed in Google Console and try again.',
+};
+
+function getFriendlyMessage(e: unknown): string {
+  const msg = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
+  return FRIENDLY_MESSAGES[msg] ?? msg;
+}
+
 export function LoginScreen() {
   const [loading, setLoading] = useState<'google' | 'github' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,8 +32,7 @@ export function LoginScreen() {
     try {
       await runGoogleSignIn();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
-      setError(msg);
+      setError(getFriendlyMessage(e));
     } finally {
       setLoading(null);
     }
@@ -33,8 +44,7 @@ export function LoginScreen() {
     try {
       await runGithubSignIn();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
-      setError(msg);
+      setError(getFriendlyMessage(e));
     } finally {
       setLoading(null);
     }
@@ -69,6 +79,7 @@ export function LoginScreen() {
           {error ? (
             <View style={styles.errorBanner}>
               <Text style={styles.errorText}>{error}</Text>
+              <Text style={styles.errorHint}>Close any browser tab and try again, or check your connection.</Text>
             </View>
           ) : null}
           <View style={styles.buttons}>
@@ -161,6 +172,13 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.medium,
     color: COLORS.error,
     textAlign: 'center',
+  },
+  errorHint: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
   },
   buttons: { width: '100%', gap: SPACING.md, marginTop: SPACING.lg },
   btn: { width: '100%' },

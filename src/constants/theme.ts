@@ -119,4 +119,5 @@ export const STORAGE_KEYS = {
   AUTH_TOKEN: '@codeverse/auth_token',
   LAST_READ_ARTICLE: '@codeverse/last_read_article',
   BOOKMARKS: '@codeverse/bookmarks',
+  PENDING_OAUTH: '@codeverse/pending_oauth',
 } as const;

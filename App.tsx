@@ -9,6 +9,7 @@ import { ProgressProvider } from './src/context/ProgressContext';
 import { BookmarksProvider } from './src/context/BookmarksContext';
 import { useLoadFonts } from './src/context/FontContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { AuthDeepLinkHandler } from './src/components/AuthDeepLinkHandler';
 import { COLORS } from './src/constants/theme';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
     <ErrorBoundary>
       <SafeAreaProvider>
 <AuthProvider>
+        <AuthDeepLinkHandler />
         <TokenProvider>
           <ProgressProvider>
           <BookmarksProvider>

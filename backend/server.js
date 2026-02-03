@@ -26,6 +26,13 @@ if (isProduction) {
     console.error('FATAL: In production, JWT_SECRET must be set and at least 32 characters.');
     process.exit(1);
   }
+  const missing = [];
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) missing.push('Google OAuth');
+  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) missing.push('GitHub OAuth');
+  if (!process.env.OPENAI_API_KEY) missing.push('OpenAI');
+  if (missing.length) {
+    console.warn('Production: optional services not configured:', missing.join(', '));
+  }
 }
 
 const secret = JWT_SECRET || 'codeverse-dev-secret-change-in-production';
@@ -94,6 +101,60 @@ app.get('/', (req, res) => {
     ai: openai ? 'openai' : 'mock',
     auth: !!(GOOGLE_CLIENT_ID || GITHUB_CLIENT_ID),
   });
+});
+
+/** App deep-link scheme – redirect from here opens the app with the auth code. */
+const APP_AUTH_SCHEME = 'codeverse-ai://auth';
+
+/**
+ * Parse state: optional "redirect_back" URL after last "." so backend can redirect to Expo Go (exp://...) or app (codeverse-ai://auth).
+ */
+function getRedirectBack(state) {
+  if (!state || typeof state !== 'string') return APP_AUTH_SCHEME;
+  const lastDot = state.lastIndexOf('.');
+  if (lastDot === -1) return APP_AUTH_SCHEME;
+  try {
+    const encoded = state.slice(lastDot + 1);
+    const decoded = decodeURIComponent(encoded);
+    if (decoded.startsWith('exp://') || decoded.startsWith('codeverse-ai://')) return decoded;
+  } catch (e) {
+    // ignore
+  }
+  return APP_AUTH_SCHEME;
+}
+
+/**
+ * GET /auth/callback/google?code=...&state=...
+ * Redirects browser to app (or Expo Go exp:// URL from state) so the app can exchange the code.
+ */
+app.get('/auth/callback/google', (req, res) => {
+  const code = req.query.code;
+  const state = req.query.state;
+  if (!code || typeof code !== 'string') {
+    return res.status(400).send('Missing code');
+  }
+  const redirectBack = getRedirectBack(state);
+  const params = new URLSearchParams({ code, provider: 'google' });
+  if (state && typeof state === 'string') params.set('state', state);
+  const target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
+  return res.redirect(302, target);
+});
+
+/**
+ * GET /auth/callback/github?code=...&state=...
+ * Same for GitHub.
+ */
+app.get('/auth/callback/github', (req, res) => {
+  const code = req.query.code;
+  const state = req.query.state;
+  if (!code || typeof code !== 'string') {
+    return res.status(400).send('Missing code');
+  }
+  const redirectBack = getRedirectBack(state);
+  const params = new URLSearchParams({ code, provider: 'github' });
+  if (state && typeof state === 'string') params.set('state', state);
+  const target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
+  return res.redirect(302, target);
 });
 
 /**

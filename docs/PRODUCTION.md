@@ -1,6 +1,8 @@
 # Production checklist – CodeVerse
 
-Use this when deploying or auditing the app and backend for production.
+**Full setup:** Follow **[PRODUCTION_SETUP.md](./PRODUCTION_SETUP.md)** for step-by-step production setup (backend, OAuth, EAS env, build, store).
+
+Use this page as a short **checklist and security summary** when deploying or auditing.
 
 ---
 

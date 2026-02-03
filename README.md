@@ -40,6 +40,14 @@ npm start
 
 Then open in Expo Go (scan QR), or run `npm run android` / `npm run ios` for a dev build.
 
+## Production setup
+
+For a **production-grade** setup (backend on Render, OAuth, EAS builds, Play Store/App Store), follow:
+
+- **[docs/PRODUCTION_SETUP.md](docs/PRODUCTION_SETUP.md)** – single guide: backend env, OAuth, app env (EAS), build, and store launch.
+
+See also: [docs/PRODUCTION.md](docs/PRODUCTION.md) (checklist), [docs/DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md), [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md), [docs/EXPO_PRODUCTION.md](docs/EXPO_PRODUCTION.md), [docs/PLAY_STORE_LAUNCH.md](docs/PLAY_STORE_LAUNCH.md).
+
 ## Configuration
 
 - **API base URL:** Set `EXPO_PUBLIC_API_URL` in your environment (e.g. in `.env`) so the app calls your backend. Used in `src/services/api.ts`. Example: `EXPO_PUBLIC_API_URL=https://api.yourdomain.com`

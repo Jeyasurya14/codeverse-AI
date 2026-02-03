@@ -1,24 +1,59 @@
 import { useCallback, useEffect } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import Constants from 'expo-constants';
 import { exchangeOAuthCode } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { STORAGE_KEYS } from '../constants/theme';
 import type { User } from '../types';
 
 WebBrowser.maybeCompleteAuthSession();
 
-/** Use Expo proxy only in Expo Go; in standalone/Play Store builds use direct deep link (codeverse-ai://) to avoid "Something went wrong" on auth.expo.io. */
-function getRedirectUri(): string {
-  const envUri = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
-  if (envUri) return envUri;
-  const isExpoGo = Constants.appOwnership === 'expo';
-  const uri = AuthSession.makeRedirectUri({ useProxy: isExpoGo });
-  if (__DEV__) {
-    console.log('[OAuth] Redirect URI (add to Google & GitHub):', uri);
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
+
+/** Normalize redirect URI: no trailing slash so it matches Google/GitHub exactly. */
+function normalizeRedirectUri(uri: string): string {
+  return uri.trim().replace(/\/+$/, '');
+}
+
+let hasLoggedRedirectUri = false;
+
+/**
+ * Redirect URI for OAuth. When BASE_URL is set we use backend callback for all (Expo Go and standalone) to avoid auth.expo.io proxy.
+ * Otherwise use proxy or EXPO_PUBLIC_GOOGLE_REDIRECT_URI for Expo Go.
+ */
+function getRedirectUri(provider?: 'google' | 'github'): string {
+  if (BASE_URL && provider) {
+    return `${BASE_URL.replace(/\/$/, '')}/auth/callback/${provider}`;
   }
-  return uri;
+  const envUri = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
+  if (envUri) {
+    const normalized = normalizeRedirectUri(envUri);
+    if (__DEV__ && !hasLoggedRedirectUri) {
+      hasLoggedRedirectUri = true;
+      console.log('[OAuth] Redirect URI (from env):', normalized);
+    }
+    return normalized;
+  }
+  const uri = AuthSession.makeRedirectUri({ useProxy: true });
+  const normalized = normalizeRedirectUri(uri);
+  if (__DEV__ && !hasLoggedRedirectUri) {
+    hasLoggedRedirectUri = true;
+    console.log('[OAuth] Add this exact redirect URI in Google & GitHub Console:', normalized);
+  }
+  return normalized;
+}
+
+/** URL the backend will redirect to after OAuth (Expo Go: exp://.../auth, standalone: codeverse-ai://auth). */
+function getRedirectBackUrl(): string {
+  const isExpoGo = Constants.appOwnership === 'expo';
+  if (isExpoGo) {
+    const base = AuthSession.makeRedirectUri({ useProxy: false });
+    return base.replace(/\/?$/, '/auth');
+  }
+  return 'codeverse-ai://auth';
 }
 
 /** When app returns from browser, complete the auth session so promptAsync() can receive the result. */
@@ -40,7 +75,7 @@ const GITHUB_DISCOVERY = {
 export function useGoogleAuth() {
   useMaybeCompleteAuthSession();
   const { signIn } = useAuth();
-  const redirectUri = getRedirectUri();
+  const redirectUri = getRedirectUri('google');
   const discovery = AuthSession.useAutoDiscovery('https://accounts.google.com');
 
   const [request, , promptAsync] = AuthSession.useAuthRequest(
@@ -60,12 +95,38 @@ export function useGoogleAuth() {
       throw new Error('Google sign-in is not configured. Set EXPO_PUBLIC_GOOGLE_CLIENT_ID.');
     }
     if (!request) throw new Error('Auth is still loading.');
+
+    if (BASE_URL) {
+      try {
+        let authUrl = await request.makeAuthUrlAsync(discovery);
+        const redirectBack = getRedirectBackUrl();
+        const stateWithRedirect = `${request.state}.${encodeURIComponent(redirectBack)}`;
+        const url = new URL(authUrl);
+        url.searchParams.set('state', stateWithRedirect);
+        authUrl = url.toString();
+        await AsyncStorage.setItem(STORAGE_KEYS.PENDING_OAUTH, JSON.stringify({
+          provider: 'google',
+          codeVerifier: request.codeVerifier,
+          state: request.state,
+        }));
+        await WebBrowser.openBrowserAsync(authUrl);
+      } catch (e) {
+        await AsyncStorage.removeItem(STORAGE_KEYS.PENDING_OAUTH);
+        throw e instanceof Error ? e : new Error('Could not open sign-in.');
+      }
+      return;
+    }
+
+    WebBrowser.maybeCompleteAuthSession();
     try {
       await WebBrowser.warmUpAsync();
     } catch {
-      // ignore warm-up failure
+      // ignore
     }
-    const result = await promptAsync();
+    const result = await promptAsync({
+      preferEphemeralSession: false,
+      ...(Platform.OS === 'android' && { createTask: false }),
+    });
     if (result.type !== 'success' || !result.params.code) {
       if (result.type === 'dismiss' || result.type === 'cancel') return;
       if (result.type === 'error' && result.error?.message) {
@@ -84,7 +145,7 @@ export function useGoogleAuth() {
       provider: 'google',
     };
     await signIn(appUser, accessToken);
-  }, [promptAsync, request, redirectUri, signIn]);
+  }, [promptAsync, request, redirectUri, signIn, discovery]);
 
   return { runGoogleSignIn, ready: !!request && !!discovery };
 }
@@ -92,7 +153,7 @@ export function useGoogleAuth() {
 export function useGithubAuth() {
   useMaybeCompleteAuthSession();
   const { signIn } = useAuth();
-  const redirectUri = getRedirectUri();
+  const redirectUri = getRedirectUri('github');
 
   const [request, , promptAsync] = AuthSession.useAuthRequest(
     {
@@ -110,7 +171,33 @@ export function useGithubAuth() {
       throw new Error('GitHub sign-in is not configured. Set EXPO_PUBLIC_GITHUB_CLIENT_ID.');
     }
     if (!request) throw new Error('Auth is still loading.');
-    const result = await promptAsync();
+
+    if (BASE_URL) {
+      try {
+        let authUrl = await request.makeAuthUrlAsync(GITHUB_DISCOVERY);
+        const redirectBack = getRedirectBackUrl();
+        const stateWithRedirect = `${request.state}.${encodeURIComponent(redirectBack)}`;
+        const url = new URL(authUrl);
+        url.searchParams.set('state', stateWithRedirect);
+        authUrl = url.toString();
+        await AsyncStorage.setItem(STORAGE_KEYS.PENDING_OAUTH, JSON.stringify({
+          provider: 'github',
+          codeVerifier: request.codeVerifier,
+          state: request.state,
+        }));
+        await WebBrowser.openBrowserAsync(authUrl);
+      } catch (e) {
+        await AsyncStorage.removeItem(STORAGE_KEYS.PENDING_OAUTH);
+        throw e instanceof Error ? e : new Error('Could not open sign-in.');
+      }
+      return;
+    }
+
+    WebBrowser.maybeCompleteAuthSession();
+    const result = await promptAsync({
+      preferEphemeralSession: false,
+      ...(Platform.OS === 'android' && { createTask: false }),
+    });
     if (result.type !== 'success' || !result.params.code) {
       if (result.type === 'dismiss' || result.type === 'cancel') return;
       if (result.type === 'error' && (result as { error?: { message?: string } }).error?.message) {
