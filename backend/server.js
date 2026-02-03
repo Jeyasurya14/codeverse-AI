@@ -1,34 +1,96 @@
 /**
- * CodeVerse API – runs on Render or locally.
- * Implements POST /ai/chat and POST /auth/exchange (Google & GitHub OAuth).
+ * CodeVerse API – production-grade.
+ * POST /ai/chat, POST /auth/exchange, health checks, security, rate limiting.
  */
 require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const OpenAI = require('openai').default;
 const jwt = require('jsonwebtoken');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const isProduction = process.env.NODE_ENV === 'production';
+const PORT = Number(process.env.PORT) || 3000;
 
-app.use(cors());
-app.use(express.json());
-
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
-
-const JWT_SECRET = process.env.JWT_SECRET || 'codeverse-dev-secret-change-in-production';
+// --- Config & validation ---
+const JWT_SECRET = process.env.JWT_SECRET;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
 
-// Health check (Render uses this to know the service is up)
+if (isProduction) {
+  if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    console.error('FATAL: In production, JWT_SECRET must be set and at least 32 characters.');
+    process.exit(1);
+  }
+}
+
+const secret = JWT_SECRET || 'codeverse-dev-secret-change-in-production';
+
+// CORS: allowlist in production, else allow all for dev
+const corsOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean)
+  : [];
+const corsOptions = corsOrigins.length
+  ? { origin: corsOrigins, optionsSuccessStatus: 200 }
+  : { origin: true };
+
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  : null;
+
+// --- App ---
+const app = express();
+
+app.set('trust proxy', 1);
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '500kb' }));
+
+// General rate limit
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 200 : 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(generalLimiter);
+
+// Stricter limits for auth and AI
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 20 : 100,
+  message: { message: 'Too many sign-in attempts. Try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const aiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: isProduction ? 30 : 60,
+  message: { message: 'Too many AI requests. Slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// --- Routes ---
+
+// Health (for load balancers / Render)
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.get('/', (req, res) => {
   res.json({
     ok: true,
     service: 'codeverse-api',
+    env: isProduction ? 'production' : 'development',
     ai: openai ? 'openai' : 'mock',
     auth: !!(GOOGLE_CLIENT_ID || GITHUB_CLIENT_ID),
   });
@@ -37,9 +99,8 @@ app.get('/', (req, res) => {
 /**
  * POST /auth/exchange
  * Body: { provider: 'google' | 'github', code: string, redirectUri?: string, codeVerifier?: string }
- * Response: { user: { id, email, name, avatar?, provider }, accessToken: string }
  */
-app.post('/auth/exchange', async (req, res) => {
+app.post('/auth/exchange', authLimiter, async (req, res) => {
   try {
     const { provider, code, redirectUri, codeVerifier } = req.body || {};
     if (!provider || !code) {
@@ -67,8 +128,8 @@ app.post('/auth/exchange', async (req, res) => {
         }),
       });
       if (!tokenRes.ok) {
-        const err = await tokenRes.text();
-        console.error('Google token error:', err);
+        const errText = await tokenRes.text();
+        if (!isProduction) console.error('Google token error:', errText);
         return res.status(400).json({ message: 'Google sign-in failed. Try again.' });
       }
       const tokens = await tokenRes.json();
@@ -137,13 +198,15 @@ app.post('/auth/exchange', async (req, res) => {
 
     const accessToken = jwt.sign(
       { sub: profile.id, email: profile.email },
-      JWT_SECRET,
-      { expiresIn: '7d' }
+      secret,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
     return res.json({ user: profile, accessToken });
   } catch (err) {
-    console.error('/auth/exchange error:', err);
-    res.status(500).json({ message: err.message || 'Sign-in failed.' });
+    if (!isProduction) console.error('/auth/exchange error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Sign-in failed.' : (err.message || 'Sign-in failed.'),
+    });
   }
 });
 
@@ -151,30 +214,25 @@ app.post('/auth/exchange', async (req, res) => {
  * POST /ai/chat
  * Body: { message: string, context?: string }
  * Response: { reply: string, tokensUsed: number }
- * 402: insufficient tokens (app shows recharge message)
  */
-app.post('/ai/chat', async (req, res) => {
+app.post('/ai/chat', aiLimiter, async (req, res) => {
   try {
     const { message, context } = req.body || {};
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ message: 'Missing or invalid "message" in body.' });
     }
 
-    // Optional: validate JWT and load user token balance from DB (see database/schema.sql)
-    // const userId = req.user?.id; const balance = await getTokenBalance(userId);
-    // if (balance < 100) return res.status(402).json({ message: 'Insufficient tokens.' });
-
     if (openai) {
       const systemContent =
-        context && context.trim()
-          ? `You are a friendly programming mentor. The user is learning in this context: ${context.trim()}. Explain clearly and concisely.`
-          : 'You are a friendly programming mentor. Explain concepts clearly and concisely. Help with code and interview prep.';
+        context && String(context).trim()
+          ? `You are a friendly programming mentor. The user is learning in this context: ${String(context).trim()}. Explain clearly and concisely.`
+          : 'You are a friendly programming mentor. Explain clearly and concisely. Help with code and interview prep.';
 
       const completion = await openai.chat.completions.create({
         model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemContent },
-          { role: 'user', content: message },
+          { role: 'user', content: message.slice(0, 16000) },
         ],
         max_tokens: 1024,
       });
@@ -186,22 +244,49 @@ app.post('/ai/chat', async (req, res) => {
       return res.json({ reply, tokensUsed });
     }
 
-    // No OPENAI_API_KEY: return mock so the app still works
     const mockReply =
-      "I'm the CodeVerse AI mentor. Set OPENAI_API_KEY on Render (and redeploy) to enable real AI. Until then, try the articles in the app for learning!";
+      "I'm the CodeVerse AI mentor. Set OPENAI_API_KEY to enable real AI.";
     res.json({ reply: mockReply, tokensUsed: 50 });
   } catch (err) {
-    console.error('/ai/chat error:', err.message);
+    if (!isProduction) console.error('/ai/chat error:', err.message);
     if (err.status === 401) {
-      return res.status(500).json({ message: 'Invalid OpenAI API key. Check OPENAI_API_KEY.' });
+      return res.status(500).json({ message: 'Invalid OpenAI API key.' });
     }
     if (err.status === 429) {
       return res.status(503).json({ message: 'AI is busy. Please try again in a moment.' });
     }
-    res.status(500).json({ message: err.message || 'AI request failed.' });
+    res.status(500).json({
+      message: isProduction ? 'AI request failed.' : (err.message || 'AI request failed.'),
+    });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`CodeVerse API listening on port ${PORT}`);
+// 404
+app.use((req, res) => {
+  res.status(404).json({ message: 'Not found' });
 });
+
+// Error handler (unhandled errors)
+app.use((err, req, res, next) => {
+  if (!isProduction) console.error(err);
+  res.status(500).json({
+    message: isProduction ? 'Something went wrong.' : (err.message || 'Something went wrong.'),
+  });
+});
+
+// --- Server & graceful shutdown ---
+const server = app.listen(PORT, () => {
+  console.log(`CodeVerse API listening on port ${PORT} (${isProduction ? 'production' : 'development'})`);
+});
+
+function shutdown(signal) {
+  console.log(`${signal} received, closing server...`);
+  server.close(() => {
+    console.log('Server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
