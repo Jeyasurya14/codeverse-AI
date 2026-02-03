@@ -12,7 +12,7 @@ type AuthTokens = {
 
 let authTokens: AuthTokens | null = null;
 
-export function setAuthTokens(tokens: AuthTokens) {
+export function setAuthTokens(tokens: AuthTokens | null) {
   authTokens = tokens;
 }
 
@@ -36,17 +36,18 @@ export async function api<T>(
   return res.json();
 }
 
-// Auth (OAuth exchange – call from your backend after Google/GitHub redirect)
+// Auth (OAuth exchange – backend exchanges code for tokens and returns user + JWT)
 export async function exchangeOAuthCode(
   provider: 'google' | 'github',
   code: string,
+  redirectUri: string,
   codeVerifier?: string
 ) {
-  return api<{ user: unknown; accessToken: string; refreshToken?: string }>(
+  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'google' | 'github' }; accessToken: string }>(
     '/auth/exchange',
     {
       method: 'POST',
-      body: JSON.stringify({ provider, code, codeVerifier }),
+      body: JSON.stringify({ provider, code, redirectUri, codeVerifier }),
     }
   );
 }

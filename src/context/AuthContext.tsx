@@ -2,11 +2,12 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { User } from '../types';
 import { STORAGE_KEYS } from '../constants/theme';
+import { setAuthTokens } from '../services/api';
 
 type AuthContextType = {
   user: User | null;
   isLoading: boolean;
-  signIn: (user: User) => Promise<void>;
+  signIn: (user: User, accessToken?: string) => Promise<void>;
   signOut: () => Promise<void>;
   isOnboardingDone: boolean;
   completeOnboarding: () => Promise<void>;
@@ -22,11 +23,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [userJson, onboarding] = await Promise.all([
+        const [userJson, token, onboarding] = await Promise.all([
           AsyncStorage.getItem(STORAGE_KEYS.USER),
+          AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN),
           AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_DONE),
         ]);
         if (userJson) setUser(JSON.parse(userJson));
+        if (token) setAuthTokens({ accessToken: token });
         if (onboarding === 'true') setIsOnboardingDone(true);
       } catch (e) {
         console.warn('Auth restore failed', e);
@@ -36,13 +39,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
-  const signIn = async (u: User) => {
+  const signIn = async (u: User, accessToken?: string) => {
     setUser(u);
     await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(u));
+    if (accessToken) {
+      setAuthTokens({ accessToken });
+      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, accessToken);
+    }
   };
 
   const signOut = async () => {
     setUser(null);
+    setAuthTokens(null);
     await AsyncStorage.multiRemove([
       STORAGE_KEYS.USER,
       STORAGE_KEYS.AUTH_TOKEN,

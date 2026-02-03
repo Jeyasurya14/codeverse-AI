@@ -1,11 +1,12 @@
 /**
  * CodeVerse API – runs on Render or locally.
- * Implements POST /ai/chat per docs/BACKEND_AI_CHAT.md.
+ * Implements POST /ai/chat and POST /auth/exchange (Google & GitHub OAuth).
  */
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const OpenAI = require('openai').default;
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,13 +18,133 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
+const JWT_SECRET = process.env.JWT_SECRET || 'codeverse-dev-secret-change-in-production';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+
 // Health check (Render uses this to know the service is up)
 app.get('/', (req, res) => {
   res.json({
     ok: true,
     service: 'codeverse-api',
     ai: openai ? 'openai' : 'mock',
+    auth: !!(GOOGLE_CLIENT_ID || GITHUB_CLIENT_ID),
   });
+});
+
+/**
+ * POST /auth/exchange
+ * Body: { provider: 'google' | 'github', code: string, redirectUri?: string, codeVerifier?: string }
+ * Response: { user: { id, email, name, avatar?, provider }, accessToken: string }
+ */
+app.post('/auth/exchange', async (req, res) => {
+  try {
+    const { provider, code, redirectUri, codeVerifier } = req.body || {};
+    if (!provider || !code) {
+      return res.status(400).json({ message: 'Missing provider or code.' });
+    }
+    if (provider !== 'google' && provider !== 'github') {
+      return res.status(400).json({ message: 'Provider must be google or github.' });
+    }
+
+    let profile;
+    if (provider === 'google') {
+      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+        return res.status(503).json({ message: 'Google sign-in is not configured.' });
+      }
+      const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          code,
+          grant_type: 'authorization_code',
+          redirect_uri: redirectUri || 'http://localhost',
+          ...(codeVerifier && { code_verifier: codeVerifier }),
+        }),
+      });
+      if (!tokenRes.ok) {
+        const err = await tokenRes.text();
+        console.error('Google token error:', err);
+        return res.status(400).json({ message: 'Google sign-in failed. Try again.' });
+      }
+      const tokens = await tokenRes.json();
+      const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (!userRes.ok) {
+        return res.status(400).json({ message: 'Could not load Google profile.' });
+      }
+      const g = await userRes.json();
+      profile = {
+        id: `google-${g.id}`,
+        email: g.email || '',
+        name: g.name || g.email || 'User',
+        avatar: g.picture,
+        provider: 'google',
+      };
+    } else {
+      if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) {
+        return res.status(503).json({ message: 'GitHub sign-in is not configured.' });
+      }
+      const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          client_id: GITHUB_CLIENT_ID,
+          client_secret: GITHUB_CLIENT_SECRET,
+          code,
+          redirect_uri: redirectUri || 'http://localhost',
+        }),
+      });
+      if (!tokenRes.ok) {
+        return res.status(400).json({ message: 'GitHub sign-in failed. Try again.' });
+      }
+      const tokens = await tokenRes.json();
+      if (tokens.error) {
+        return res.status(400).json({ message: tokens.error_description || 'GitHub sign-in failed.' });
+      }
+      const userRes = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      if (!userRes.ok) {
+        return res.status(400).json({ message: 'Could not load GitHub profile.' });
+      }
+      const g = await userRes.json();
+      const emailRes = await fetch('https://api.github.com/user/emails', {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      });
+      let email = g.email;
+      if (emailRes.ok) {
+        const emails = await emailRes.json();
+        const primary = emails.find((e) => e.primary);
+        if (primary) email = primary.email;
+      }
+      profile = {
+        id: `github-${g.id}`,
+        email: email || '',
+        name: g.name || g.login || 'User',
+        avatar: g.avatar_url,
+        provider: 'github',
+      };
+    }
+
+    const accessToken = jwt.sign(
+      { sub: profile.id, email: profile.email },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    return res.json({ user: profile, accessToken });
+  } catch (err) {
+    console.error('/auth/exchange error:', err);
+    res.status(500).json({ message: err.message || 'Sign-in failed.' });
+  }
 });
 
 /**

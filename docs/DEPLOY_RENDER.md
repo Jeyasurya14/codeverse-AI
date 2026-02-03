@@ -48,9 +48,15 @@ In the same screen, open **Environment** and add:
 |-----|--------|--------|
 | `OPENAI_API_KEY` | `sk-...` | Your OpenAI API key. Required for real AI. |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Optional. Default is `gpt-4o-mini`. |
+| `GOOGLE_CLIENT_ID` | from Google Console | Required for Google sign-in. Same as in app. |
+| `GOOGLE_CLIENT_SECRET` | from Google Console | Required for Google sign-in. |
+| `GITHUB_CLIENT_ID` | from GitHub OAuth App | Required for GitHub sign-in. Same as in app. |
+| `GITHUB_CLIENT_SECRET` | from GitHub OAuth App | Required for GitHub sign-in. |
+| `JWT_SECRET` | long random string | For signing access tokens. Change in production. |
 
 - **PORT** is set by Render automatically; do not add it.
 - Without `OPENAI_API_KEY`, the backend still deploys and returns a short mock reply so the app works.
+- For Google/GitHub login to work, set the OAuth env vars and configure redirect URIs (see **docs/OAUTH_SETUP.md**).
 
 ---
 

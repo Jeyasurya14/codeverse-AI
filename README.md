@@ -43,7 +43,7 @@ Then open in Expo Go (scan QR), or run `npm run android` / `npm run ios` for a d
 ## Configuration
 
 - **API base URL:** Set `EXPO_PUBLIC_API_URL` in your environment (e.g. in `.env`) so the app calls your backend. Used in `src/services/api.ts`. Example: `EXPO_PUBLIC_API_URL=https://api.yourdomain.com`
-- **Deep linking:** The app uses the scheme `codeverse`. When the user is logged in, opening `codeverse://recharge` (e.g. from an email or push notification link) navigates to the Recharge tokens screen.
+- **Deep linking:** The app uses the scheme `codeverse-ai`. When the user is logged in, opening `codeverse-ai://recharge` (e.g. from an email or push notification link) navigates to the Recharge tokens screen.
 
 ## Backend (your side)
 

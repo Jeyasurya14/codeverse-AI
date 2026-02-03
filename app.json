@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "codeverse",
-    "slug": "codeverse",
+    "name": "codeverse-ai",
+    "slug": "codeverse-ai",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -26,10 +26,16 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "scheme": "codeverse",
+    "scheme": "codeverse-ai",
     "plugins": [
       "expo-web-browser",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "41f8f61e-8f10-4e94-b642-c456afde667e"
+      }
+    },
+    "owner": "codeverse-ai"
   }
 }

@@ -8,7 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { COLORS, FONTS, SPACING } from '../constants/theme';
 
 const linking = {
-  prefixes: ['codeverse://'],
+  prefixes: ['codeverse-ai://'],
   config: {
     screens: {
       RechargeTokens: 'recharge',

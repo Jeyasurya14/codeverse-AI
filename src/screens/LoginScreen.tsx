@@ -4,28 +4,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NeonButton } from '../components/NeonButton';
 import { GradientIllustration } from '../components/GradientIllustration';
-import { useAuth } from '../context/AuthContext';
+import { useGoogleAuth, useGithubAuth } from '../hooks/useOAuth';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
 
 export function LoginScreen() {
-  const { signIn } = useAuth();
   const [loading, setLoading] = useState<'google' | 'github' | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const { runGoogleSignIn, ready: googleReady } = useGoogleAuth();
+  const { runGithubSignIn, ready: githubReady } = useGithubAuth();
 
   const handleGoogleSignIn = async () => {
     setError(null);
     setLoading('google');
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      await signIn({
-        id: 'demo-google-1',
-        email: 'user@gmail.com',
-        name: 'Demo User',
-        avatar: undefined,
-        provider: 'google',
-      });
+      await runGoogleSignIn();
     } catch (e) {
-      setError('Sign-in failed. Please try again.');
+      const msg = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(null);
     }
@@ -35,16 +31,10 @@ export function LoginScreen() {
     setError(null);
     setLoading('github');
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      await signIn({
-        id: 'demo-github-1',
-        email: 'user@github.com',
-        name: 'Dev User',
-        avatar: undefined,
-        provider: 'github',
-      });
+      await runGithubSignIn();
     } catch (e) {
-      setError('Sign-in failed. Please try again.');
+      const msg = e instanceof Error ? e.message : 'Sign-in failed. Please try again.';
+      setError(msg);
     } finally {
       setLoading(null);
     }
@@ -86,6 +76,7 @@ export function LoginScreen() {
               title="Continue with Google"
               onPress={handleGoogleSignIn}
               loading={loading === 'google'}
+              disabled={!googleReady}
               pill
               style={styles.btn}
             />
@@ -94,6 +85,7 @@ export function LoginScreen() {
               onPress={handleGithubSignIn}
               variant="gradientBorder"
               loading={loading === 'github'}
+              disabled={!githubReady}
               pill
               style={styles.btn}
             />
