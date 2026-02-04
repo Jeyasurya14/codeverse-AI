@@ -159,6 +159,16 @@ const aiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Rate limiter for conversation creation (prevent abuse)
+const conversationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isProduction ? 10 : 50, // Max 10 conversations per 15 minutes in production
+  message: { message: 'Too many conversation creation attempts. Please wait before creating more.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false, // Count all requests, not just failed ones
+});
+
 // --- Database helpers ---
 
 async function findUserByEmail(email) {
@@ -257,6 +267,545 @@ async function resetFailedLoginAttempts(userId) {
 async function updateLastLogin(userId) {
   if (!pool) return;
   await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [userId]);
+}
+
+// --- Token Usage Management ---
+
+// Token cost constants
+const TOKENS_PER_AI_MESSAGE = 10; // Fixed cost per AI message
+const AI_TOKENS_FREE_LIMIT = 300; // Free tokens limit per user
+
+// Conversation limits based on subscription plan
+const CONVERSATION_LIMITS = {
+  free: 2,
+  starter: 10,
+  learner: 25,
+  pro: 100,
+  unlimited: -1, // -1 means unlimited
+};
+
+/**
+ * Initialize token_usage record for a new user
+ */
+async function initializeTokenUsage(userId) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO token_usage (user_id, free_used, purchased_total, purchased_used)
+       VALUES ($1, 0, 0, 0)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId]
+    );
+  } catch (err) {
+    console.error('❌ Error initializing token usage:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Get token usage for a user
+ */
+async function getTokenUsage(userId) {
+  if (!pool) {
+    return { freeUsed: 0, purchasedTotal: 0, purchasedUsed: 0 };
+  }
+  try {
+    const result = await pool.query(
+      'SELECT free_used, purchased_total, purchased_used FROM token_usage WHERE user_id = $1',
+      [userId]
+    );
+    if (result.rows.length === 0) {
+      // Initialize if doesn't exist
+      await initializeTokenUsage(userId);
+      return { freeUsed: 0, purchasedTotal: 0, purchasedUsed: 0 };
+    }
+    const row = result.rows[0];
+    return {
+      freeUsed: row.free_used || 0,
+      purchasedTotal: row.purchased_total || 0,
+      purchasedUsed: row.purchased_used || 0,
+    };
+  } catch (err) {
+    console.error('❌ Error getting token usage:', err.message);
+    return { freeUsed: 0, purchasedTotal: 0, purchasedUsed: 0 };
+  }
+}
+
+/**
+ * Update token usage for a user (sync from frontend)
+ */
+async function updateTokenUsage(userId, freeUsed, purchasedTotal, purchasedUsed) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO token_usage (user_id, free_used, purchased_total, purchased_used, updated_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       ON CONFLICT (user_id) 
+       DO UPDATE SET 
+         free_used = EXCLUDED.free_used,
+         purchased_total = EXCLUDED.purchased_total,
+         purchased_used = EXCLUDED.purchased_used,
+         updated_at = NOW()`,
+      [userId, freeUsed || 0, purchasedTotal || 0, purchasedUsed || 0]
+    );
+  } catch (err) {
+    console.error('❌ Error updating token usage:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Check if user has enough tokens available
+ */
+async function checkTokenBalance(userId, required) {
+  if (!pool) return { hasEnough: false, available: 0, freeRemaining: 0, purchasedRemaining: 0 };
+  try {
+    const usage = await getTokenUsage(userId);
+    const freeRemaining = Math.max(0, AI_TOKENS_FREE_LIMIT - usage.freeUsed);
+    const purchasedRemaining = Math.max(0, usage.purchasedTotal - usage.purchasedUsed);
+    const totalAvailable = freeRemaining + purchasedRemaining;
+    
+    return {
+      hasEnough: totalAvailable >= required,
+      available: totalAvailable,
+      freeRemaining,
+      purchasedRemaining,
+      freeUsed: usage.freeUsed,
+      purchasedTotal: usage.purchasedTotal,
+      purchasedUsed: usage.purchasedUsed,
+    };
+  } catch (err) {
+    console.error('❌ Error checking token balance:', err.message);
+    return { hasEnough: false, available: 0, freeRemaining: 0, purchasedRemaining: 0 };
+  }
+}
+
+/**
+ * Get user's subscription plan (with validation)
+ */
+async function getUserPlan(userId) {
+  if (!pool) {
+    throw new Error('Database not configured');
+  }
+  
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Invalid user ID');
+  }
+  
+  try {
+    const result = await pool.query(
+      'SELECT subscription_plan FROM users WHERE id = $1',
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      throw new Error('User not found');
+    }
+    
+    const plan = result.rows[0]?.subscription_plan || 'free';
+    
+    // Validate plan is in allowed list
+    if (!CONVERSATION_LIMITS.hasOwnProperty(plan)) {
+      console.warn(`⚠️  Invalid subscription plan "${plan}" for user ${userId}, defaulting to "free"`);
+      return 'free';
+    }
+    
+    return plan;
+  } catch (err) {
+    if (err.message === 'User not found' || err.message === 'Invalid user ID') {
+      throw err;
+    }
+    console.error('❌ Error getting user plan:', err.message);
+    throw new Error('Failed to retrieve user plan');
+  }
+}
+
+/**
+ * Get conversation count for a user (with validation)
+ */
+async function getConversationCount(userId) {
+  if (!pool) {
+    throw new Error('Database not configured');
+  }
+  
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Invalid user ID');
+  }
+  
+  try {
+    const result = await pool.query(
+      'SELECT COUNT(*)::int as count FROM ai_conversations WHERE user_id = $1',
+      [userId]
+    );
+    return result.rows[0]?.count || 0;
+  } catch (err) {
+    console.error('❌ Error getting conversation count:', err.message);
+    throw new Error('Failed to retrieve conversation count');
+  }
+}
+
+/**
+ * Check if user can create a new conversation (atomic check)
+ * Returns: { allowed: boolean, limit: number, current: number, plan: string }
+ */
+async function canCreateConversation(userId) {
+  if (!pool) {
+    throw new Error('Database not configured');
+  }
+  
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Invalid user ID');
+  }
+  
+  try {
+    // Get plan and count in a single transaction to avoid race conditions
+    const result = await pool.query(
+      `SELECT 
+        u.subscription_plan,
+        COUNT(c.id)::int as conversation_count
+      FROM users u
+      LEFT JOIN ai_conversations c ON c.user_id = u.id
+      WHERE u.id = $1
+      GROUP BY u.id, u.subscription_plan`,
+      [userId]
+    );
+    
+    if (result.rows.length === 0) {
+      throw new Error('User not found');
+    }
+    
+    const plan = result.rows[0]?.subscription_plan || 'free';
+    const current = result.rows[0]?.conversation_count || 0;
+    const limit = CONVERSATION_LIMITS[plan] || CONVERSATION_LIMITS.free;
+    
+    // Unlimited plan
+    if (limit === -1) {
+      return { allowed: true, limit: -1, current, plan };
+    }
+    
+    return {
+      allowed: current < limit,
+      limit,
+      current,
+      plan,
+    };
+  } catch (err) {
+    if (err.message === 'User not found' || err.message === 'Invalid user ID') {
+      throw err;
+    }
+    console.error('❌ Error checking conversation limit:', err.message);
+    throw new Error('Failed to check conversation limit');
+  }
+}
+
+/**
+ * Create a new conversation for a user (atomic operation with limit check)
+ * Validates input and uses transaction to prevent race conditions
+ */
+async function createConversation(userId, title = null) {
+  if (!pool) {
+    throw new Error('Database not configured');
+  }
+  
+  // Input validation
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Invalid user ID');
+  }
+  
+  // Validate title length (max 255 chars per schema)
+  if (title !== null && title !== undefined) {
+    if (typeof title !== 'string') {
+      throw new Error('Title must be a string');
+    }
+    if (title.length > 255) {
+      throw new Error('Title exceeds maximum length of 255 characters');
+    }
+    // Sanitize title - remove leading/trailing whitespace
+    title = title.trim() || null;
+  }
+  
+  const client = await pool.connect();
+  
+  try {
+    await client.query('BEGIN');
+    
+    // Atomic check: Get plan and count in same transaction
+    const checkResult = await client.query(
+      `SELECT 
+        u.subscription_plan,
+        COUNT(c.id)::int as conversation_count
+      FROM users u
+      LEFT JOIN ai_conversations c ON c.user_id = u.id
+      WHERE u.id = $1
+      GROUP BY u.id, u.subscription_plan
+      FOR UPDATE`,
+      [userId]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      throw new Error('User not found');
+    }
+    
+    const plan = checkResult.rows[0]?.subscription_plan || 'free';
+    const current = checkResult.rows[0]?.conversation_count || 0;
+    const limit = CONVERSATION_LIMITS[plan] || CONVERSATION_LIMITS.free;
+    
+    // Check limit (unlimited = -1)
+    if (limit !== -1 && current >= limit) {
+      await client.query('ROLLBACK');
+      const error = new Error(`CONVERSATION_LIMIT_REACHED`);
+      error.limit = limit;
+      error.current = current;
+      error.plan = plan;
+      throw error;
+    }
+    
+    // Create conversation
+    const insertResult = await client.query(
+      'INSERT INTO ai_conversations (user_id, title) VALUES ($1, $2) RETURNING *',
+      [userId, title]
+    );
+    
+    await client.query('COMMIT');
+    
+    return insertResult.rows[0];
+  } catch (err) {
+    await client.query('ROLLBACK');
+    
+    // Re-throw known errors
+    if (err.message === 'CONVERSATION_LIMIT_REACHED' || err.message === 'User not found' || err.message === 'Invalid user ID') {
+      throw err;
+    }
+    
+    // Log and wrap database errors
+    console.error('❌ Error creating conversation:', err.message);
+    
+    // Check for constraint violations
+    if (err.code === '23505') { // Unique violation
+      throw new Error('Conversation already exists');
+    }
+    if (err.code === '23503') { // Foreign key violation
+      throw new Error('Invalid user ID');
+    }
+    
+    throw new Error('Failed to create conversation');
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Get all conversations for a user (ordered by most recent)
+ * Production-grade: Input validation, error handling, optimized query
+ */
+async function getUserConversations(userId) {
+  if (!pool) {
+    throw new Error('Database not configured');
+  }
+  
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Invalid user ID');
+  }
+  
+  try {
+    // Optimized query using the composite index
+    const result = await pool.query(
+      `SELECT 
+        c.id,
+        c.title,
+        c.created_at,
+        c.updated_at,
+        COUNT(m.id)::int as message_count,
+        (SELECT content FROM ai_messages WHERE conversation_id = c.id ORDER BY created_at ASC LIMIT 1) as first_message
+      FROM ai_conversations c
+      LEFT JOIN ai_messages m ON m.conversation_id = c.id
+      WHERE c.user_id = $1
+      GROUP BY c.id, c.title, c.created_at, c.updated_at
+      ORDER BY c.updated_at DESC`,
+      [userId]
+    );
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      title: row.title || (row.first_message ? row.first_message.substring(0, 50) + '...' : 'New Conversation'),
+      messageCount: row.message_count || 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } catch (err) {
+    console.error('❌ Error getting conversations:', err.message);
+    throw new Error('Failed to retrieve conversations');
+  }
+}
+
+/**
+ * Get messages for a conversation
+ */
+async function getConversationMessages(conversationId, userId) {
+  if (!pool) return [];
+  try {
+    // Verify conversation belongs to user
+    const convCheck = await pool.query(
+      'SELECT id FROM ai_conversations WHERE id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+    if (convCheck.rows.length === 0) {
+      return [];
+    }
+    
+    const result = await pool.query(
+      'SELECT id, role, content, tokens_used, created_at FROM ai_messages WHERE conversation_id = $1 ORDER BY created_at ASC',
+      [conversationId]
+    );
+    return result.rows.map(row => ({
+      id: row.id,
+      role: row.role,
+      text: row.content,
+      tokensUsed: row.tokens_used || 0,
+      createdAt: row.created_at,
+    }));
+  } catch (err) {
+    console.error('❌ Error getting messages:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Add a message to a conversation
+ */
+async function addMessageToConversation(conversationId, role, content, tokensUsed = 0) {
+  if (!pool) return null;
+  try {
+    const result = await pool.query(
+      'INSERT INTO ai_messages (conversation_id, role, content, tokens_used) VALUES ($1, $2, $3, $4) RETURNING *',
+      [conversationId, role, content, tokensUsed]
+    );
+    
+    // Update conversation's updated_at timestamp
+    await pool.query(
+      'UPDATE ai_conversations SET updated_at = NOW() WHERE id = $1',
+      [conversationId]
+    );
+    
+    return result.rows[0];
+  } catch (err) {
+    console.error('❌ Error adding message:', err.message);
+    throw err;
+  }
+}
+
+/**
+ * Update conversation title
+ */
+async function updateConversationTitle(conversationId, userId, title) {
+  if (!pool) return false;
+  try {
+    const result = await pool.query(
+      'UPDATE ai_conversations SET title = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3',
+      [title, conversationId, userId]
+    );
+    return result.rowCount > 0;
+  } catch (err) {
+    console.error('❌ Error updating conversation title:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Delete a conversation
+ */
+async function deleteConversation(conversationId, userId) {
+  if (!pool) return false;
+  try {
+    const result = await pool.query(
+      'DELETE FROM ai_conversations WHERE id = $1 AND user_id = $2',
+      [conversationId, userId]
+    );
+    return result.rowCount > 0;
+  } catch (err) {
+    console.error('❌ Error deleting conversation:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Consume tokens atomically (deduct from available tokens)
+ * Uses database transaction to ensure atomicity
+ */
+async function consumeTokens(userId, count) {
+  if (!pool) return { success: false, error: 'Database not available' };
+  
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    
+    // Get current usage with row lock to prevent race conditions
+    const usageResult = await client.query(
+      'SELECT free_used, purchased_total, purchased_used FROM token_usage WHERE user_id = $1 FOR UPDATE',
+      [userId]
+    );
+    
+    if (usageResult.rows.length === 0) {
+      // Initialize if doesn't exist
+      await client.query(
+        'INSERT INTO token_usage (user_id, free_used, purchased_total, purchased_used) VALUES ($1, 0, 0, 0)',
+        [userId]
+      );
+      await client.query('COMMIT');
+      return { success: false, error: 'Insufficient tokens' };
+    }
+    
+    const usage = usageResult.rows[0];
+    const freeRemaining = Math.max(0, AI_TOKENS_FREE_LIMIT - (usage.free_used || 0));
+    const purchasedRemaining = Math.max(0, (usage.purchased_total || 0) - (usage.purchased_used || 0));
+    const totalAvailable = freeRemaining + purchasedRemaining;
+    
+    if (count > totalAvailable) {
+      await client.query('ROLLBACK');
+      return { success: false, error: 'Insufficient tokens', available: totalAvailable };
+    }
+    
+    let remaining = count;
+    let newFreeUsed = usage.free_used || 0;
+    let newPurchasedUsed = usage.purchased_used || 0;
+    
+    // Use free tokens first
+    if (freeRemaining > 0 && remaining > 0) {
+      const useFromFree = Math.min(freeRemaining, remaining);
+      newFreeUsed = (usage.free_used || 0) + useFromFree;
+      remaining -= useFromFree;
+    }
+    
+    // Then use purchased tokens
+    if (remaining > 0 && purchasedRemaining > 0) {
+      const useFromPurchased = Math.min(purchasedRemaining, remaining);
+      newPurchasedUsed = (usage.purchased_used || 0) + useFromPurchased;
+    }
+    
+    // Update atomically
+    await client.query(
+      `UPDATE token_usage 
+       SET free_used = $1, purchased_used = $2, updated_at = NOW() 
+       WHERE user_id = $3`,
+      [newFreeUsed, newPurchasedUsed, userId]
+    );
+    
+    await client.query('COMMIT');
+    
+    return {
+      success: true,
+      freeUsed: newFreeUsed,
+      purchasedUsed: newPurchasedUsed,
+      consumed: count,
+    };
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('❌ Error consuming tokens:', err.message);
+    return { success: false, error: err.message };
+  } finally {
+    client.release();
+  }
 }
 
 async function createRefreshToken(userId, expiresAt) {
@@ -607,6 +1156,13 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
       providerId: profile.id,
     });
 
+    // Ensure token usage is initialized (for new users)
+    await initializeTokenUsage(user.id);
+    
+    // Get token usage for response
+    const tokenUsage = await getTokenUsage(user.id);
+    const balance = await checkTokenBalance(user.id, 0);
+
     const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, false);
     return res.json({
       user: {
@@ -619,6 +1175,16 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
       accessToken,
       refreshToken,
       expiresAt,
+      tokenUsage: {
+        freeUsed: tokenUsage.freeUsed,
+        purchasedTotal: tokenUsage.purchasedTotal,
+        purchasedUsed: tokenUsage.purchasedUsed,
+        freeLimit: AI_TOKENS_FREE_LIMIT,
+        freeRemaining: balance.freeRemaining,
+        purchasedRemaining: balance.purchasedRemaining,
+        totalAvailable: balance.available,
+        tokensPerMessage: TOKENS_PER_AI_MESSAGE,
+      },
     });
   } catch (err) {
     if (!isProduction) console.error('/auth/exchange error:', err);
@@ -663,6 +1229,10 @@ app.post('/auth/register', authLimiter, async (req, res) => {
       passwordHash,
     });
     console.log(`[Register] User created successfully: ${user.id}`);
+    
+    // Initialize token usage record
+    await initializeTokenUsage(user.id);
+    console.log(`[Register] Token usage initialized for user: ${user.id}`);
 
     // Send email verification
     if (emailTransporter && user.email_verification_token) {
@@ -685,6 +1255,10 @@ app.post('/auth/register', authLimiter, async (req, res) => {
     const userAgent = req.get('user-agent') || '';
     await logSecurityEvent(user.id, 'user_registered', ipAddress, userAgent);
 
+    // Get token usage (should be initialized, but fetch to be sure)
+    const tokenUsage = await getTokenUsage(user.id);
+    const balance = await checkTokenBalance(user.id, 0);
+
     const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, false);
     return res.json({
       user: {
@@ -698,6 +1272,16 @@ app.post('/auth/register', authLimiter, async (req, res) => {
       accessToken,
       refreshToken,
       expiresAt,
+      tokenUsage: {
+        freeUsed: tokenUsage.freeUsed,
+        purchasedTotal: tokenUsage.purchasedTotal,
+        purchasedUsed: tokenUsage.purchasedUsed,
+        freeLimit: AI_TOKENS_FREE_LIMIT,
+        freeRemaining: balance.freeRemaining,
+        purchasedRemaining: balance.purchasedRemaining,
+        totalAvailable: balance.available,
+        tokensPerMessage: TOKENS_PER_AI_MESSAGE,
+      },
     });
   } catch (err) {
     if (!isProduction) console.error('/auth/register error:', err);
@@ -775,6 +1359,13 @@ app.post('/auth/login', authLimiter, async (req, res) => {
     await updateLastLogin(user.id);
     await logSecurityEvent(user.id, 'login_success', ipAddress, userAgent);
 
+    // Ensure token usage record exists
+    await initializeTokenUsage(user.id);
+    
+    // Get token usage for response
+    const tokenUsage = await getTokenUsage(user.id);
+    const balance = await checkTokenBalance(user.id, 0);
+
     const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, !!rememberMe);
     return res.json({
       user: {
@@ -788,6 +1379,16 @@ app.post('/auth/login', authLimiter, async (req, res) => {
       accessToken,
       refreshToken,
       expiresAt,
+      tokenUsage: {
+        freeUsed: tokenUsage.freeUsed,
+        purchasedTotal: tokenUsage.purchasedTotal,
+        purchasedUsed: tokenUsage.purchasedUsed,
+        freeLimit: AI_TOKENS_FREE_LIMIT,
+        freeRemaining: balance.freeRemaining,
+        purchasedRemaining: balance.purchasedRemaining,
+        totalAvailable: balance.available,
+        tokensPerMessage: TOKENS_PER_AI_MESSAGE,
+      },
     });
   } catch (err) {
     if (!isProduction) console.error('/auth/login error:', err);
@@ -849,6 +1450,11 @@ app.get('/auth/magic-link/verify', async (req, res) => {
         name: magicToken.email.split('@')[0],
         provider: 'email',
       });
+      // Initialize token usage for new user
+      await initializeTokenUsage(user.id);
+    } else {
+      // Ensure token usage exists for existing user
+      await initializeTokenUsage(user.id);
     }
 
     const { accessToken, refreshToken } = await generateTokensWithRefresh(user, false);
@@ -1319,50 +1925,593 @@ app.post('/auth/password/reset', authLimiter, async (req, res) => {
 });
 
 /**
+ * GET /tokens/usage
+ * Get current token usage and balance for authenticated user
+ */
+app.get('/tokens/usage', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const userId = decoded.sub;
+    const tokenUsage = await getTokenUsage(userId);
+    const balance = await checkTokenBalance(userId, 0); // Just get balance info
+    
+    return res.json({
+      freeUsed: tokenUsage.freeUsed,
+      purchasedTotal: tokenUsage.purchasedTotal,
+      purchasedUsed: tokenUsage.purchasedUsed,
+      freeLimit: AI_TOKENS_FREE_LIMIT,
+      freeRemaining: balance.freeRemaining,
+      purchasedRemaining: balance.purchasedRemaining,
+      totalAvailable: balance.available,
+      tokensPerMessage: TOKENS_PER_AI_MESSAGE,
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/tokens/usage error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to get token usage.' : (err.message || 'Failed to get token usage.'),
+    });
+  }
+});
+
+/**
+ * GET /tokens/balance
+ * Quick check of token balance (lightweight endpoint)
+ */
+app.get('/tokens/balance', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const balance = await checkTokenBalance(decoded.sub, TOKENS_PER_AI_MESSAGE);
+    
+    return res.json({
+      hasEnough: balance.hasEnough,
+      available: balance.available,
+      required: TOKENS_PER_AI_MESSAGE,
+      freeRemaining: balance.freeRemaining,
+      purchasedRemaining: balance.purchasedRemaining,
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/tokens/balance error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to get token balance.' : (err.message || 'Failed to get token balance.'),
+    });
+  }
+});
+
+/**
+ * POST /tokens/sync
+ * Sync token usage from frontend to backend
+ * Body: { freeUsed: number, purchasedTotal: number, purchasedUsed: number }
+ */
+app.post('/tokens/sync', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const { freeUsed, purchasedTotal, purchasedUsed } = req.body || {};
+    
+    // Validate input
+    if (typeof freeUsed !== 'number' || typeof purchasedTotal !== 'number' || typeof purchasedUsed !== 'number') {
+      return res.status(400).json({ message: 'Invalid token usage values.' });
+    }
+    
+    if (freeUsed < 0 || purchasedTotal < 0 || purchasedUsed < 0) {
+      return res.status(400).json({ message: 'Token usage values cannot be negative.' });
+    }
+
+    await updateTokenUsage(decoded.sub, freeUsed, purchasedTotal, purchasedUsed);
+    return res.json({ message: 'Token usage synced successfully.' });
+  } catch (err) {
+    if (!isProduction) console.error('/tokens/sync error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to sync token usage.' : (err.message || 'Failed to sync token usage.'),
+    });
+  }
+});
+
+/**
+ * GET /ai/conversations
+ * Get all conversations for authenticated user
+ */
+app.get('/ai/conversations', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const conversations = await getUserConversations(decoded.sub);
+    return res.json({ conversations });
+  } catch (err) {
+    if (!isProduction) console.error('/ai/conversations error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to get conversations.' : (err.message || 'Failed to get conversations.'),
+    });
+  }
+});
+
+/**
+ * POST /ai/conversations
+ * Create a new conversation
+ * Body: { title?: string }
+ * Rate limited: 10 per 15 minutes (production)
+ */
+app.post('/ai/conversations', conversationLimiter, async (req, res) => {
+  try {
+    // Authentication
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ 
+        message: 'Authentication required.',
+        error: 'UNAUTHORIZED',
+      });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch (jwtErr) {
+      return res.status(401).json({ 
+        message: 'Invalid or expired token.',
+        error: 'INVALID_TOKEN',
+      });
+    }
+
+    // Input validation
+    const { title } = req.body || {};
+    
+    // Validate title if provided
+    if (title !== undefined && title !== null) {
+      if (typeof title !== 'string') {
+        return res.status(400).json({
+          message: 'Title must be a string.',
+          error: 'INVALID_INPUT',
+        });
+      }
+      if (title.length > 255) {
+        return res.status(400).json({
+          message: 'Title exceeds maximum length of 255 characters.',
+          error: 'INVALID_INPUT',
+        });
+      }
+    }
+    
+    try {
+      const conversation = await createConversation(decoded.sub, title || null);
+      
+      // Log successful creation (for monitoring)
+      if (isProduction) {
+        console.log(`✅ Conversation created: ${conversation.id} for user ${decoded.sub}`);
+      }
+      
+      return res.status(201).json({ 
+        conversation,
+        message: 'Conversation created successfully.',
+      });
+    } catch (err) {
+      // Handle conversation limit error (structured error from createConversation)
+      if (err.message === 'CONVERSATION_LIMIT_REACHED' || err.limit !== undefined) {
+        const limit = err.limit || CONVERSATION_LIMITS.free;
+        const current = err.current || 0;
+        const plan = err.plan || 'free';
+        
+        // Log limit reached (for analytics)
+        if (isProduction) {
+          console.log(`⚠️  Conversation limit reached: user ${decoded.sub}, plan ${plan}, ${current}/${limit}`);
+        }
+        
+        return res.status(403).json({
+          message: `You have reached the maximum of ${limit} conversations for your ${plan} plan. Please delete an existing conversation or upgrade to create more.`,
+          error: 'CONVERSATION_LIMIT_REACHED',
+          limit,
+          current,
+          plan,
+        });
+      }
+      
+      // Handle other known errors
+      if (err.message === 'User not found') {
+        return res.status(404).json({
+          message: 'User not found.',
+          error: 'USER_NOT_FOUND',
+        });
+      }
+      
+      if (err.message === 'Invalid user ID') {
+        return res.status(400).json({
+          message: 'Invalid user ID.',
+          error: 'INVALID_INPUT',
+        });
+      }
+      
+      if (err.message === 'Database not configured') {
+        return res.status(503).json({
+          message: 'Service temporarily unavailable.',
+          error: 'SERVICE_UNAVAILABLE',
+        });
+      }
+      
+      // Log unexpected errors
+      console.error('❌ Unexpected error creating conversation:', {
+        userId: decoded.sub,
+        error: err.message,
+        stack: isProduction ? undefined : err.stack,
+      });
+      
+      throw err;
+    }
+  } catch (err) {
+    // Final error handler
+    const statusCode = err.statusCode || 500;
+    const errorMessage = isProduction 
+      ? 'Failed to create conversation. Please try again later.' 
+      : (err.message || 'Failed to create conversation.');
+    
+    if (!isProduction) {
+      console.error('/ai/conversations POST error:', err);
+    }
+    
+    res.status(statusCode).json({
+      message: errorMessage,
+      error: 'INTERNAL_ERROR',
+    });
+  }
+});
+
+/**
+ * GET /ai/conversations/:id/messages
+ * Get messages for a conversation
+ */
+app.get('/ai/conversations/:id/messages', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const { id } = req.params;
+    const messages = await getConversationMessages(id, decoded.sub);
+    return res.json({ messages });
+  } catch (err) {
+    if (!isProduction) console.error('/ai/conversations/:id/messages error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to get messages.' : (err.message || 'Failed to get messages.'),
+    });
+  }
+});
+
+/**
+ * PUT /ai/conversations/:id
+ * Update conversation title
+ * Body: { title: string }
+ */
+app.put('/ai/conversations/:id', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const { id } = req.params;
+    const { title } = req.body || {};
+    if (!title || typeof title !== 'string') {
+      return res.status(400).json({ message: 'Title is required.' });
+    }
+
+    const success = await updateConversationTitle(id, decoded.sub, title);
+    if (!success) {
+      return res.status(404).json({ message: 'Conversation not found.' });
+    }
+    return res.json({ message: 'Conversation updated.' });
+  } catch (err) {
+    if (!isProduction) console.error('/ai/conversations/:id PUT error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to update conversation.' : (err.message || 'Failed to update conversation.'),
+    });
+  }
+});
+
+/**
+ * DELETE /ai/conversations/:id
+ * Delete a conversation
+ */
+app.delete('/ai/conversations/:id', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const { id } = req.params;
+    const success = await deleteConversation(id, decoded.sub);
+    if (!success) {
+      return res.status(404).json({ message: 'Conversation not found.' });
+    }
+    return res.json({ message: 'Conversation deleted.' });
+  } catch (err) {
+    if (!isProduction) console.error('/ai/conversations/:id DELETE error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to delete conversation.' : (err.message || 'Failed to delete conversation.'),
+    });
+  }
+});
+
+/**
  * POST /ai/chat
- * Body: { message: string, context?: string }
- * Response: { reply: string, tokensUsed: number }
+ * Body: { message: string, context?: string, conversationId?: string }
+ * Response: { reply: string, tokensUsed: number, conversationId?: string }
+ * Requires authentication and sufficient token balance (10 tokens per message)
  */
 app.post('/ai/chat', aiLimiter, async (req, res) => {
   try {
-    const { message, context } = req.body || {};
+    // Require authentication
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid or expired token.' });
+    }
+
+    const userId = decoded.sub;
+    const { message, context, conversationId } = req.body || {};
+    
     if (!message || typeof message !== 'string') {
       return res.status(400).json({ message: 'Missing or invalid "message" in body.' });
     }
 
-    if (openai) {
-      const systemContent =
-        context && String(context).trim()
-          ? `You are a friendly programming mentor. The user is learning in this context: ${String(context).trim()}. Explain clearly and concisely.`
-          : 'You are a friendly programming mentor. Explain clearly and concisely. Help with code and interview prep.';
-
-      const completion = await openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemContent },
-          { role: 'user', content: message.slice(0, 16000) },
-        ],
-        max_tokens: 1024,
+    // Check token balance BEFORE processing
+    const balance = await checkTokenBalance(userId, TOKENS_PER_AI_MESSAGE);
+    if (!balance.hasEnough) {
+      return res.status(402).json({
+        message: `Insufficient tokens. You need ${TOKENS_PER_AI_MESSAGE} tokens but only have ${balance.available} available.`,
+        tokensRequired: TOKENS_PER_AI_MESSAGE,
+        tokensAvailable: balance.available,
+        freeRemaining: balance.freeRemaining,
+        purchasedRemaining: balance.purchasedRemaining,
       });
-
-      const reply = completion.choices[0]?.message?.content?.trim() || "I couldn't generate a reply.";
-      const tokensUsed =
-        completion.usage?.total_tokens ?? Math.ceil((message.length + reply.length) / 4);
-
-      return res.json({ reply, tokensUsed });
     }
 
-    const mockReply =
-      "I'm the CodeVerse AI mentor. Set OPENAI_API_KEY to enable real AI.";
-    res.json({ reply: mockReply, tokensUsed: 50 });
+    // Consume tokens BEFORE making AI call (atomic operation)
+    const consumeResult = await consumeTokens(userId, TOKENS_PER_AI_MESSAGE);
+    if (!consumeResult.success) {
+      return res.status(402).json({
+        message: `Failed to consume tokens: ${consumeResult.error || 'Unknown error'}`,
+        tokensRequired: TOKENS_PER_AI_MESSAGE,
+        tokensAvailable: consumeResult.available || 0,
+      });
+    }
+
+    // Handle conversation
+    let currentConversationId = conversationId;
+    
+    // Create new conversation if not provided
+    if (!currentConversationId) {
+      try {
+        const newConv = await createConversation(userId);
+        currentConversationId = newConv.id;
+      } catch (convErr) {
+        // Handle conversation limit error (structured error from createConversation)
+        if (convErr.message === 'CONVERSATION_LIMIT_REACHED' || convErr.limit !== undefined) {
+          const limit = convErr.limit || CONVERSATION_LIMITS.free;
+          const current = convErr.current || 0;
+          const plan = convErr.plan || 'free';
+          
+          // Log limit reached
+          if (isProduction) {
+            console.log(`⚠️  Conversation limit reached during AI chat: user ${userId}, plan ${plan}, ${current}/${limit}`);
+          }
+          
+          return res.status(403).json({
+            message: `You have reached the maximum of ${limit} conversations for your ${plan} plan. Please delete an existing conversation or upgrade to create more.`,
+            error: 'CONVERSATION_LIMIT_REACHED',
+            tokensUsed: 0, // No tokens consumed
+            limit,
+            current,
+            plan,
+          });
+        }
+        throw convErr;
+      }
+    } else {
+      // Validate conversation ID format (UUID)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(currentConversationId)) {
+        return res.status(400).json({
+          message: 'Invalid conversation ID format.',
+          error: 'INVALID_INPUT',
+        });
+      }
+      
+      // Verify conversation belongs to user
+      const convCheck = await pool.query(
+        'SELECT id FROM ai_conversations WHERE id = $1 AND user_id = $2',
+        [currentConversationId, userId]
+      );
+      if (convCheck.rows.length === 0) {
+        // Create new conversation if provided ID doesn't exist or doesn't belong to user
+        try {
+          const newConv = await createConversation(userId);
+          currentConversationId = newConv.id;
+        } catch (convErr) {
+          // Handle conversation limit error (structured error from createConversation)
+          if (convErr.message === 'CONVERSATION_LIMIT_REACHED' || convErr.limit !== undefined) {
+            const limit = convErr.limit || CONVERSATION_LIMITS.free;
+            const current = convErr.current || 0;
+            const plan = convErr.plan || 'free';
+            
+            // Log limit reached
+            if (isProduction) {
+              console.log(`⚠️  Conversation limit reached during AI chat (invalid conv ID): user ${userId}, plan ${plan}, ${current}/${limit}`);
+            }
+            
+            return res.status(403).json({
+              message: `You have reached the maximum of ${limit} conversations for your ${plan} plan. Please delete an existing conversation or upgrade to create more.`,
+              error: 'CONVERSATION_LIMIT_REACHED',
+              tokensUsed: 0, // No tokens consumed
+              limit,
+              current,
+              plan,
+            });
+          }
+          throw convErr;
+        }
+      }
+    }
+    
+    // Store user message
+    await addMessageToConversation(currentConversationId, 'user', message, 0);
+    
+    // Load conversation history for context (last 10 messages)
+    const previousMessages = await getConversationMessages(currentConversationId, userId);
+    const recentMessages = previousMessages.slice(-10); // Last 10 messages for context
+    
+    // Now process the AI request
+    let reply;
+    let aiTokensUsed = 0;
+    
+    try {
+      if (openai) {
+        const systemContent =
+          context && String(context).trim()
+            ? `You are a friendly programming mentor. The user is learning in this context: ${String(context).trim()}. Explain clearly and concisely.`
+            : 'You are a friendly programming mentor. Explain clearly and concisely. Help with code and interview prep.';
+
+        // Build messages array with conversation history
+        const messagesForAI = [
+          { role: 'system', content: systemContent },
+        ];
+        
+        // Add conversation history (excluding the current message we just added)
+        recentMessages.forEach(msg => {
+          if (msg.role === 'user' || msg.role === 'assistant') {
+            messagesForAI.push({
+              role: msg.role,
+              content: msg.text,
+            });
+          }
+        });
+
+        const completion = await openai.chat.completions.create({
+          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+          messages: messagesForAI,
+          max_tokens: 1024,
+        });
+
+        reply = completion.choices[0]?.message?.content?.trim() || "I couldn't generate a reply.";
+        aiTokensUsed = completion.usage?.total_tokens ?? Math.ceil((message.length + reply.length) / 4);
+      } else {
+        reply = "I'm the CodeVerse AI mentor. Set OPENAI_API_KEY to enable real AI.";
+        aiTokensUsed = 0; // Mock doesn't use real tokens
+      }
+      
+      // Store assistant reply
+      await addMessageToConversation(currentConversationId, 'assistant', reply, TOKENS_PER_AI_MESSAGE);
+      
+      // Update conversation title if it's the first message
+      if (previousMessages.length === 0) {
+        const title = message.substring(0, 50).trim();
+        await updateConversationTitle(currentConversationId, userId, title);
+      }
+
+      // Return success with fixed token cost (not actual AI usage)
+      return res.json({
+        reply,
+        tokensUsed: TOKENS_PER_AI_MESSAGE, // Always return fixed cost
+        aiTokensUsed, // Actual AI tokens used (for reference)
+        remainingTokens: balance.available - TOKENS_PER_AI_MESSAGE,
+        conversationId: currentConversationId,
+      });
+    } catch (aiError) {
+      // If AI call fails, we could refund tokens, but for now we'll keep them consumed
+      // (user got rate limited or API error, but we already consumed their tokens)
+      console.error('AI call failed after token consumption:', aiError.message);
+      
+      if (aiError.status === 401) {
+        return res.status(500).json({ message: 'Invalid OpenAI API key.' });
+      }
+      if (aiError.status === 429) {
+        return res.status(503).json({ 
+          message: 'AI service is busy. Please try again in a moment.',
+          tokensUsed: TOKENS_PER_AI_MESSAGE, // Tokens still consumed
+        });
+      }
+      
+      throw aiError; // Re-throw to be caught by outer catch
+    }
   } catch (err) {
     if (!isProduction) console.error('/ai/chat error:', err.message);
-    if (err.status === 401) {
-      return res.status(500).json({ message: 'Invalid OpenAI API key.' });
-    }
-    if (err.status === 429) {
-      return res.status(503).json({ message: 'AI is busy. Please try again in a moment.' });
-    }
     res.status(500).json({
       message: isProduction ? 'AI request failed.' : (err.message || 'AI request failed.'),
     });

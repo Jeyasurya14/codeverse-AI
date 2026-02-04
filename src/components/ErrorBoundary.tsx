@@ -20,7 +20,13 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    if (__DEV__) console.error('ErrorBoundary caught:', error, errorInfo);
+    // Log error for debugging (only in dev mode)
+    if (__DEV__) {
+      console.error('ErrorBoundary caught:', error, errorInfo);
+    }
+    
+    // In production, you might want to send this to an error tracking service
+    // Example: Sentry.captureException(error, { extra: errorInfo });
   }
 
   retry = () => {

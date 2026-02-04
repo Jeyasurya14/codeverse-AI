@@ -21,6 +21,7 @@ export type ProgrammingLanguage = {
   icon: string;
   description: string;
   topicCount: number;
+  category: 'language' | 'framework' | 'aiml';
 };
 
 export type Article = {

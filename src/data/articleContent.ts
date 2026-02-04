@@ -4,64 +4,770 @@
  */
 export const ARTICLE_CONTENT: Record<string, string> = {
   // —— JavaScript ——
-  '1-intro-js': `JavaScript is the language of the web. It runs in browsers and on servers (Node.js), letting you build interactive pages and full-stack applications.
+  '1-intro-js': `# Introduction to JavaScript
 
-**Key points:**
-- JavaScript is dynamically typed and runs line by line.
-- You can run it in the browser console or in a .js file.
-- Variables are declared with let, const, or (legacy) var.
+JavaScript is the programming language that powers the modern web. Created by Brendan Eich in 1995, JavaScript has evolved from a simple scripting language for web browsers into a powerful, versatile language used for front-end development, back-end servers (Node.js), mobile apps (React Native), desktop applications (Electron), and even embedded systems.
+
+## What Makes JavaScript Special?
+
+JavaScript is unique because it's the only programming language that runs natively in web browsers. This means every modern browser has a JavaScript engine built-in, making it universally accessible. Additionally, JavaScript is:
+
+- **Dynamically typed**: You don't need to declare variable types upfront
+- **Interpreted**: Code runs line-by-line without compilation (though modern engines use JIT compilation)
+- **Multi-paradigm**: Supports object-oriented, functional, and procedural programming styles
+- **Event-driven**: Built for handling user interactions and asynchronous operations
+
+## Where JavaScript Runs
+
+### 1. Web Browsers
+JavaScript runs in browsers like Chrome, Firefox, Safari, and Edge. It manipulates the Document Object Model (DOM) to create interactive web pages.
+
+\`\`\`javascript
+// Browser example - adding interactivity to a webpage
+document.getElementById('button').addEventListener('click', function() {
+  alert('Hello from JavaScript!');
+});
+\`\`\`
+
+### 2. Node.js (Server-Side)
+Node.js allows JavaScript to run on servers, enabling full-stack JavaScript development.
+
+\`\`\`javascript
+// Node.js example - creating a simple web server
+const http = require('http');
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('Hello from Node.js!');
+});
+server.listen(3000);
+\`\`\`
+
+### 3. Mobile Apps
+Frameworks like React Native and Ionic use JavaScript to build native mobile applications.
+
+### 4. Desktop Applications
+Electron uses JavaScript to build desktop apps (VS Code, Slack, Discord are built with Electron).
+
+## Your First JavaScript Program
+
+Let's start with the classic "Hello, World!" program:
 
 \`\`\`javascript
 // Your first program
 console.log("Hello, World!");
+
+// Storing values in variables
 const name = "CodeVerse";
 let count = 0;
 count = count + 1;
+
+console.log(\`Welcome to \${name}! Count: \${count}\`);
 \`\`\`
 
-Start by writing small scripts and using console.log to see results. Once you're comfortable, move on to variables and data types.`,
+## Understanding JavaScript Execution
 
-  '1-variables': `Variables hold values. In modern JavaScript you use let (reassignable) and const (constant reference). Types include numbers, strings, booleans, null, undefined, and objects.
+JavaScript code executes in a specific order:
 
-**Key points:**
-- Prefer const by default; use let when you need to reassign.
-- Strings can use single quotes, double quotes, or backticks (template literals).
-- typeof helps you inspect the type of a value at runtime.
+1. **Top to bottom**: Code runs line by line from top to bottom
+2. **Synchronous by default**: Each line waits for the previous one to complete
+3. **Asynchronous capabilities**: Can handle non-blocking operations with callbacks, promises, and async/await
 
 \`\`\`javascript
-const pi = 3.14;
-let score = 0;
-const message = \`Score: \${score}\`;
+// Synchronous execution
+console.log("First");
+console.log("Second");
+console.log("Third");
+// Output: First, Second, Third (in order)
+
+// Asynchronous example
+console.log("First");
+setTimeout(() => console.log("Second"), 1000);
+console.log("Third");
+// Output: First, Third, Second (after 1 second)
+\`\`\`
+
+## Variable Declarations: let, const, and var
+
+Modern JavaScript uses three ways to declare variables:
+
+### const (Constant)
+Use \`const\` for values that won't be reassigned. This is the preferred choice for most variables.
+
+\`\`\`javascript
+const PI = 3.14159;
+const userName = "Alice";
+// PI = 3.14; // Error! Cannot reassign const
+
+// Note: const doesn't make objects immutable
+const user = { name: "Alice" };
+user.name = "Bob"; // This works! We're modifying the object, not reassigning
+\`\`\`
+
+### let (Block-Scoped Variable)
+Use \`let\` when you need to reassign a value. It's block-scoped, meaning it only exists within the nearest curly braces.
+
+\`\`\`javascript
+let counter = 0;
+counter = counter + 1; // Reassignment is allowed
+
+if (true) {
+  let blockScoped = "I only exist here";
+}
+// console.log(blockScoped); // Error! blockScoped doesn't exist here
+\`\`\`
+
+### var (Legacy - Avoid in New Code)
+\`var\` is function-scoped and can lead to confusing behavior. Avoid it in modern code.
+
+\`\`\`javascript
+// var is function-scoped (not block-scoped)
+if (true) {
+  var functionScoped = "I exist outside the block!";
+}
+console.log(functionScoped); // This works, which can be confusing
+\`\`\`
+
+## Running JavaScript
+
+### In the Browser
+1. **Browser Console**: Press F12 or right-click → Inspect → Console tab
+2. **HTML Script Tag**: Add \`<script src="app.js"></script>\` to your HTML
+3. **Inline Script**: Use \`<script>/* your code */</script>\` directly in HTML
+
+### With Node.js
+\`\`\`bash
+# Run a JavaScript file
+node app.js
+
+# Interactive REPL (Read-Eval-Print Loop)
+node
+> console.log("Hello from REPL!")
+\`\`\`
+
+## JavaScript Ecosystem
+
+The JavaScript ecosystem is vast and includes:
+
+- **Package Managers**: npm, yarn, pnpm
+- **Build Tools**: Webpack, Vite, Parcel
+- **Frameworks**: React, Vue, Angular, Svelte
+- **Libraries**: jQuery, Lodash, Axios
+- **Testing**: Jest, Mocha, Cypress
+- **Type Systems**: TypeScript (adds types to JavaScript)
+
+## Best Practices for Beginners
+
+1. **Always use \`const\` by default**, switch to \`let\` only when reassignment is needed
+2. **Use meaningful variable names**: \`userName\` instead of \`u\` or \`x\`
+3. **Write small, focused functions**: Each function should do one thing well
+4. **Use console.log() liberally**: It's your best friend for debugging
+5. **Read error messages carefully**: They tell you exactly what went wrong and where
+
+## Common Beginner Mistakes
+
+1. **Forgetting semicolons**: While optional, they prevent certain bugs
+2. **Using == instead of ===**: Always use strict equality (\`===\`) to avoid type coercion surprises
+3. **Not understanding scope**: Variables declared with \`let\` and \`const\` are block-scoped
+4. **Mutating arrays/objects**: Remember that \`const\` prevents reassignment, not mutation
+
+## Next Steps
+
+Now that you understand the basics, you're ready to explore:
+- Variables and data types (numbers, strings, booleans, objects, arrays)
+- Functions and how to organize code
+- Control flow (if/else, loops)
+- Working with the DOM for web interactivity
+
+Start by writing small scripts and experimenting in the browser console. The more you practice, the more comfortable you'll become with JavaScript's unique characteristics and powerful features.`,
+
+  '1-variables': `# Variables and Data Types in JavaScript
+
+Variables are containers that store data values. In JavaScript, variables are dynamically typed, meaning you don't need to declare what type of data they'll hold. The type is determined automatically when you assign a value.
+
+## Understanding Variables
+
+A variable is like a labeled box where you can store information. You give it a name (identifier) and assign it a value. JavaScript variables can hold different types of data, and you can even change the type of data stored in a variable (though this is generally not recommended).
+
+## Variable Declaration: const vs let
+
+### const - Constant Reference
+\`const\` creates a variable that cannot be reassigned. This is the preferred way to declare variables in modern JavaScript.
+
+\`\`\`javascript
+const pi = 3.14159;
+const userName = "Alice";
 const isActive = true;
-let empty = null;
-console.log(typeof message); // "string"
+
+// This will cause an error:
+// pi = 3.14; // TypeError: Assignment to constant variable
+
+// However, const doesn't make objects/arrays immutable:
+const user = { name: "Alice", age: 30 };
+user.age = 31; // This works! We're modifying the object, not reassigning
+user.email = "alice@example.com"; // Adding properties also works
 \`\`\`
 
-Understanding types will make debugging easier and prepare you for TypeScript later.`,
-
-  '1-functions': `Functions bundle reusable logic. They create their own scope: variables declared inside are not visible outside. Parameters receive inputs; return sends a value back.
-
-**Key points:**
-- Function declarations are hoisted; function expressions are not.
-- Scope is lexical: inner functions can access outer variables (closure).
-- Avoid polluting the global scope; keep functions small and focused.
+### let - Reassignable Variable
+Use \`let\` when you need to change the value later.
 
 \`\`\`javascript
+let score = 0;
+score = score + 10; // Reassignment is allowed
+score = 100; // Can change the value completely
+
+let currentUser = null;
+currentUser = { name: "Bob", id: 123 }; // Can reassign to different types
+\`\`\`
+
+## JavaScript Data Types
+
+JavaScript has 7 primitive types and objects:
+
+### 1. Number
+Represents both integers and floating-point numbers. JavaScript uses 64-bit floating point for all numbers.
+
+\`\`\`javascript
+const age = 25; // Integer
+const price = 19.99; // Floating point
+const temperature = -10; // Negative number
+const bigNumber = 1e6; // Scientific notation (1,000,000)
+const infinity = Infinity;
+const notANumber = NaN; // Special value for invalid math operations
+
+// Number operations
+const sum = 10 + 5; // 15
+const product = 10 * 5; // 50
+const division = 10 / 3; // 3.3333333333333335
+const remainder = 10 % 3; // 1 (modulo)
+\`\`\`
+
+### 2. String
+Text data enclosed in quotes. You can use single quotes, double quotes, or backticks (template literals).
+
+\`\`\`javascript
+const singleQuotes = 'Hello';
+const doubleQuotes = "World";
+const templateLiteral = \`Hello, \${singleQuotes}!\`; // "Hello, Hello!"
+
+// String operations
+const firstName = "John";
+const lastName = "Doe";
+const fullName = firstName + " " + lastName; // Concatenation
+const greeting = \`Hello, \${fullName}!\`; // Template literal (preferred)
+
+// String methods
+const text = "Hello World";
+console.log(text.length); // 11
+console.log(text.toUpperCase()); // "HELLO WORLD"
+console.log(text.toLowerCase()); // "hello world"
+console.log(text.substring(0, 5)); // "Hello"
+\`\`\`
+
+### 3. Boolean
+Represents true or false values, used for logical operations.
+
+\`\`\`javascript
+const isLoggedIn = true;
+const hasPermission = false;
+const isGreater = 10 > 5; // true
+
+// Boolean operations
+const and = true && false; // false (both must be true)
+const or = true || false; // true (at least one must be true)
+const not = !true; // false (negation)
+\`\`\`
+
+### 4. null
+Represents the intentional absence of a value. It's a value that means "no value."
+
+\`\`\`javascript
+let user = null; // Explicitly set to "no value"
+// Later...
+user = { name: "Alice" }; // Can be reassigned
+\`\`\`
+
+### 5. undefined
+Represents a variable that has been declared but not assigned a value.
+
+\`\`\`javascript
+let unassigned; // undefined
+console.log(unassigned); // undefined
+
+// undefined is also returned when accessing non-existent properties
+const obj = { name: "Alice" };
+console.log(obj.age); // undefined
+\`\`\`
+
+### 6. Symbol (ES6+)
+A unique identifier, primarily used for object property keys.
+
+\`\`\`javascript
+const sym1 = Symbol("description");
+const sym2 = Symbol("description");
+console.log(sym1 === sym2); // false (each Symbol is unique)
+\`\`\`
+
+### 7. BigInt (ES2020+)
+For integers larger than Number.MAX_SAFE_INTEGER.
+
+\`\`\`javascript
+const bigNumber = 9007199254740991n; // Note the 'n' suffix
+const anotherBig = BigInt("9007199254740991");
+\`\`\`
+
+### Objects (Reference Type)
+Objects are collections of key-value pairs. Arrays, functions, and dates are also objects.
+
+\`\`\`javascript
+// Object literal
+const person = {
+  name: "Alice",
+  age: 30,
+  email: "alice@example.com",
+  isActive: true
+};
+
+// Accessing properties
+console.log(person.name); // Dot notation
+console.log(person["age"]); // Bracket notation (useful for dynamic keys)
+
+// Arrays are also objects
+const fruits = ["apple", "banana", "cherry"];
+console.log(fruits[0]); // "apple"
+\`\`\`
+
+## Type Checking with typeof
+
+The \`typeof\` operator helps you inspect the type of a value at runtime.
+
+\`\`\`javascript
+console.log(typeof 42); // "number"
+console.log(typeof "hello"); // "string"
+console.log(typeof true); // "boolean"
+console.log(typeof undefined); // "undefined"
+console.log(typeof null); // "object" (this is a JavaScript quirk!)
+console.log(typeof {}); // "object"
+console.log(typeof []); // "object" (arrays are objects)
+console.log(typeof function() {}); // "function"
+
+// Better way to check for arrays
+console.log(Array.isArray([])); // true
+console.log(Array.isArray({})); // false
+
+// Checking for null
+const value = null;
+console.log(value === null); // true (use === for null checks)
+\`\`\`
+
+## Type Coercion
+
+JavaScript automatically converts types in certain situations. This can be helpful but also confusing.
+
+\`\`\`javascript
+// Implicit coercion
+console.log("5" + 3); // "53" (number converted to string)
+console.log("5" - 3); // 2 (string converted to number)
+console.log("5" * "2"); // 10 (both converted to numbers)
+
+// Explicit coercion
+const num = Number("42"); // 42
+const str = String(42); // "42"
+const bool = Boolean(1); // true
+
+// Truthy and Falsy values
+// Falsy: false, 0, "", null, undefined, NaN
+// Everything else is truthy
+if (0) { console.log("won't run"); }
+if (1) { console.log("will run"); }
+\`\`\`
+
+## Best Practices
+
+1. **Always use \`const\` by default**: Only use \`let\` when you need reassignment
+2. **Use meaningful names**: \`userName\` instead of \`u\` or \`x\`
+3. **Prefer template literals**: Use backticks for string interpolation
+4. **Use strict equality**: Always use \`===\` instead of \`==\` to avoid coercion surprises
+5. **Initialize variables**: Always assign a value when declaring
+
+\`\`\`javascript
+// Good
+const userName = "Alice";
+const userAge = 30;
+const isActive = true;
+
+// Bad
+let u = "Alice"; // Unclear name
+let age; // Undefined, should initialize
+if (age == 30) { } // Should use ===
+\`\`\`
+
+## Common Pitfalls
+
+1. **Reassigning const**: Remember that \`const\` prevents reassignment, not mutation
+2. **Type coercion surprises**: Be careful with \`+\` operator (it concatenates strings)
+3. **null vs undefined**: \`null\` is intentional, \`undefined\` means not assigned
+4. **typeof null**: Returns "object" (historical JavaScript quirk)
+
+Understanding types deeply will make debugging easier and prepare you for TypeScript, which adds static typing to JavaScript.`,
+
+  '1-functions': `# Functions and Scope in JavaScript
+
+Functions are the building blocks of JavaScript programs. They allow you to encapsulate code into reusable blocks, making your code more organized, maintainable, and testable. Understanding functions deeply is crucial for mastering JavaScript.
+
+## What Are Functions?
+
+A function is a block of code designed to perform a specific task. Functions can:
+- Accept input (parameters)
+- Process that input
+- Return output (return value)
+- Be called multiple times with different inputs
+
+## Function Declarations
+
+Function declarations are hoisted, meaning they're available throughout their scope, even before they're defined.
+
+\`\`\`javascript
+// Function declaration
 function greet(name) {
   const greeting = "Hello, " + name;
   return greeting;
 }
-const result = greet("Developer");
-function counter() {
-  let n = 0;
-  return function () { return ++n; };
+
+// Can be called before it's defined (hoisting)
+console.log(greet("Alice")); // "Hello, Alice"
+
+// Functions can have multiple parameters
+function calculateTotal(price, tax, discount) {
+  const subtotal = price - discount;
+  return subtotal + (subtotal * tax);
 }
-const next = counter();
-console.log(next()); // 1
-console.log(next()); // 2
+
+console.log(calculateTotal(100, 0.1, 10)); // 99
 \`\`\`
 
-Practice writing pure functions (same inputs → same outputs) when you can.`,
+## Function Expressions
+
+Function expressions assign a function to a variable. They're not hoisted.
+
+\`\`\`javascript
+// Function expression
+const greet = function(name) {
+  return "Hello, " + name;
+};
+
+// Arrow function expression (ES6+)
+const greetArrow = (name) => {
+  return "Hello, " + name;
+};
+
+// Arrow function with implicit return
+const greetShort = (name) => "Hello, " + name;
+
+console.log(greet("Bob")); // "Hello, Bob"
+\`\`\`
+
+## Arrow Functions (ES6+)
+
+Arrow functions provide a shorter syntax and lexical \`this\` binding.
+
+\`\`\`javascript
+// Traditional function
+function add(a, b) {
+  return a + b;
+}
+
+// Arrow function equivalent
+const addArrow = (a, b) => {
+  return a + b;
+};
+
+// Single expression - implicit return
+const addShort = (a, b) => a + b;
+
+// Single parameter - can omit parentheses
+const square = x => x * x;
+
+// No parameters
+const getRandom = () => Math.random();
+
+// Arrow functions don't have their own 'this'
+const obj = {
+  name: "Alice",
+  traditional: function() {
+    console.log(this.name); // "Alice" (this refers to obj)
+  },
+  arrow: () => {
+    console.log(this.name); // undefined (this refers to global scope)
+  }
+};
+\`\`\`
+
+## Parameters and Arguments
+
+Parameters are the variables listed in the function definition. Arguments are the actual values passed when calling the function.
+
+\`\`\`javascript
+// Parameters: name, age
+function introduce(name, age) {
+  return \`I'm \${name} and I'm \${age} years old\`;
+}
+
+// Arguments: "Alice", 30
+console.log(introduce("Alice", 30));
+
+// Default parameters (ES6+)
+function greet(name = "Guest", greeting = "Hello") {
+  return \`\${greeting}, \${name}!\`;
+}
+
+console.log(greet()); // "Hello, Guest!"
+console.log(greet("Bob", "Hi")); // "Hi, Bob!"
+
+// Rest parameters (collect remaining arguments)
+function sum(...numbers) {
+  return numbers.reduce((total, num) => total + num, 0);
+}
+
+console.log(sum(1, 2, 3, 4, 5)); // 15
+\`\`\`
+
+## Return Values
+
+Functions can return values using the \`return\` statement. Without \`return\`, functions return \`undefined\`.
+
+\`\`\`javascript
+function add(a, b) {
+  return a + b; // Returns the sum
+}
+
+const result = add(5, 3); // result is 8
+
+function noReturn() {
+  console.log("This function doesn't return anything");
+}
+
+const value = noReturn(); // value is undefined
+
+// Early return
+function checkAge(age) {
+  if (age < 0) {
+    return "Invalid age"; // Early exit
+  }
+  if (age < 18) {
+    return "Minor";
+  }
+  return "Adult";
+}
+\`\`\`
+
+## Scope and Closures
+
+Scope determines where variables are accessible. JavaScript has function scope (and block scope with \`let\`/\`const\`).
+
+\`\`\`javascript
+// Global scope
+const globalVar = "I'm global";
+
+function outerFunction() {
+  // Function scope
+  const outerVar = "I'm in outer function";
+  
+  function innerFunction() {
+    // Inner function scope
+    const innerVar = "I'm in inner function";
+    console.log(globalVar); // Can access global
+    console.log(outerVar); // Can access outer (closure!)
+    console.log(innerVar); // Can access own
+  }
+  
+  innerFunction();
+  // console.log(innerVar); // Error! innerVar is not accessible here
+}
+
+outerFunction();
+\`\`\`
+
+## Closures
+
+A closure is when an inner function has access to variables from its outer (enclosing) scope, even after the outer function has returned.
+
+\`\`\`javascript
+// Classic closure example
+function createCounter() {
+  let count = 0; // Private variable
+  
+  return function() {
+    count++; // Accesses outer scope variable
+    return count;
+  };
+}
+
+const counter1 = createCounter();
+const counter2 = createCounter();
+
+console.log(counter1()); // 1
+console.log(counter1()); // 2
+console.log(counter2()); // 1 (separate closure)
+console.log(counter1()); // 3
+
+// Practical closure: Factory function
+function createMultiplier(factor) {
+  return function(number) {
+    return number * factor; // factor is "closed over"
+  };
+}
+
+const double = createMultiplier(2);
+const triple = createMultiplier(3);
+
+console.log(double(5)); // 10
+console.log(triple(5)); // 15
+\`\`\`
+
+## Higher-Order Functions
+
+Functions that take other functions as arguments or return functions are called higher-order functions.
+
+\`\`\`javascript
+// Function as argument
+function processArray(arr, processor) {
+  const result = [];
+  for (let item of arr) {
+    result.push(processor(item));
+  }
+  return result;
+}
+
+const numbers = [1, 2, 3, 4];
+const doubled = processArray(numbers, x => x * 2); // [2, 4, 6, 8]
+
+// Built-in higher-order functions
+const nums = [1, 2, 3, 4, 5];
+const doubled = nums.map(x => x * 2); // [2, 4, 6, 8, 10]
+const evens = nums.filter(x => x % 2 === 0); // [2, 4]
+const sum = nums.reduce((acc, x) => acc + x, 0); // 15
+
+// Function as return value
+function createValidator(min, max) {
+  return function(value) {
+    return value >= min && value <= max;
+  };
+}
+
+const validateAge = createValidator(18, 65);
+console.log(validateAge(25)); // true
+console.log(validateAge(15)); // false
+\`\`\`
+
+## Pure Functions
+
+Pure functions always return the same output for the same input and have no side effects.
+
+\`\`\`javascript
+// Pure function
+function add(a, b) {
+  return a + b; // Same input always gives same output, no side effects
+}
+
+// Impure function (has side effect)
+let counter = 0;
+function increment() {
+  counter++; // Modifies external state
+  return counter;
+}
+
+// Impure function (depends on external state)
+function getCurrentTime() {
+  return new Date(); // Different output each time
+}
+
+// Benefits of pure functions:
+// - Easier to test
+// - Easier to reason about
+// - Can be memoized
+// - Safe for parallel execution
+\`\`\`
+
+## Function Methods: call, apply, bind
+
+These methods allow you to control the \`this\` context of functions.
+
+\`\`\`javascript
+const person = {
+  name: "Alice",
+  greet: function(greeting) {
+    return \`\${greeting}, I'm \${this.name}\`;
+  }
+};
+
+// call - calls function with specified this and arguments
+console.log(person.greet.call({ name: "Bob" }, "Hi")); // "Hi, I'm Bob"
+
+// apply - same as call but arguments are in an array
+console.log(person.greet.apply({ name: "Charlie" }, ["Hello"])); // "Hello, I'm Charlie"
+
+// bind - creates a new function with bound this
+const greetBob = person.greet.bind({ name: "Bob" });
+console.log(greetBob("Hey")); // "Hey, I'm Bob"
+\`\`\`
+
+## Best Practices
+
+1. **Keep functions small**: Each function should do one thing well
+2. **Use descriptive names**: Function names should clearly describe what they do
+3. **Prefer pure functions**: Easier to test and reason about
+4. **Limit parameters**: Too many parameters make functions hard to use
+5. **Use default parameters**: Make functions more flexible
+6. **Document complex logic**: Add comments for non-obvious code
+
+\`\`\`javascript
+// Good
+function calculateTotalPrice(items, taxRate = 0.1) {
+  const subtotal = items.reduce((sum, item) => sum + item.price, 0);
+  return subtotal * (1 + taxRate);
+}
+
+// Bad
+function calc(a, b, c, d, e, f) { // Too many parameters
+  // 50 lines of code doing multiple things
+}
+\`\`\`
+
+## Common Patterns
+
+### Callback Pattern
+\`\`\`javascript
+function fetchData(url, callback) {
+  // Simulate async operation
+  setTimeout(() => {
+    callback({ data: "result" });
+  }, 1000);
+}
+
+fetchData("/api/users", (result) => {
+  console.log(result.data);
+});
+\`\`\`
+
+### IIFE (Immediately Invoked Function Expression)
+\`\`\`javascript
+(function() {
+  const privateVar = "I'm private";
+  console.log(privateVar);
+})(); // Executes immediately, creates its own scope
+\`\`\`
+
+### Recursive Functions
+\`\`\`javascript
+function factorial(n) {
+  if (n <= 1) return 1; // Base case
+  return n * factorial(n - 1); // Recursive case
+}
+
+console.log(factorial(5)); // 120
+\`\`\`
+
+Mastering functions is essential for writing clean, maintainable JavaScript code. Practice creating pure functions, using closures effectively, and understanding scope to become a better JavaScript developer.`,
 
   '1-control-flow': `Programs make decisions with if/else and repeat work with for and while loops. Conditionals use comparison (===, <, >) and logical operators (&&, ||, !).
 
@@ -89,23 +795,373 @@ while (j < 2) {
 
 Combine conditionals and loops to process data and control program flow.`,
 
-  '1-arrays': `Arrays are ordered lists. They hold any types and have methods for adding, removing, and transforming elements. Indexes start at 0.
+  '1-arrays': `# Arrays and Array Methods in JavaScript
 
-**Key points:**
-- Use push/pop for the end, unshift/shift for the start.
-- map, filter, and reduce are the core tools for transforming arrays.
-- forEach runs a function per item but doesn't return a new array.
+Arrays are one of the most fundamental data structures in JavaScript. They're ordered collections of values that can hold any type of data, including other arrays and objects. Understanding arrays deeply is essential for effective JavaScript programming.
+
+## What Are Arrays?
+
+An array is an ordered list of values. Each value is called an element, and each element has a numeric position called an index. Arrays in JavaScript are:
+- **Zero-indexed**: The first element is at index 0
+- **Dynamic**: Can grow or shrink in size
+- **Heterogeneous**: Can contain different types of data
+- **Mutable**: Can be modified after creation
+
+## Creating Arrays
 
 \`\`\`javascript
-const nums = [1, 2, 3, 4, 5];
-const doubled = nums.map(n => n * 2);
-const evens = nums.filter(n => n % 2 === 0);
-const sum = nums.reduce((acc, n) => acc + n, 0);
-nums.push(6);
-console.log(nums.length);
+// Array literal (most common)
+const fruits = ["apple", "banana", "cherry"];
+
+// Array constructor
+const numbers = new Array(1, 2, 3);
+
+// Empty array
+const empty = [];
+
+// Array with different types
+const mixed = [1, "hello", true, { name: "Alice" }, [1, 2, 3]];
+
+// Array with initial size
+const sized = new Array(5); // Creates array with 5 undefined elements
 \`\`\`
 
-Master map, filter, and reduce; they appear everywhere in modern JavaScript.`,
+## Accessing Array Elements
+
+\`\`\`javascript
+const fruits = ["apple", "banana", "cherry"];
+
+// Access by index
+console.log(fruits[0]); // "apple"
+console.log(fruits[1]); // "banana"
+console.log(fruits[2]); // "cherry"
+console.log(fruits[3]); // undefined (doesn't exist)
+
+// Negative indexing (not native, but can use length)
+console.log(fruits[fruits.length - 1]); // "cherry" (last element)
+
+// Check array length
+console.log(fruits.length); // 3
+\`\`\`
+
+## Adding and Removing Elements
+
+### Adding Elements
+
+\`\`\`javascript
+const arr = [1, 2, 3];
+
+// Add to end
+arr.push(4); // [1, 2, 3, 4]
+arr.push(5, 6); // Can add multiple: [1, 2, 3, 4, 5, 6]
+
+// Add to beginning
+arr.unshift(0); // [0, 1, 2, 3, 4, 5, 6]
+
+// Insert at specific index
+arr.splice(2, 0, 1.5); // Insert 1.5 at index 2: [0, 1, 1.5, 2, 3, 4, 5, 6]
+\`\`\`
+
+### Removing Elements
+
+\`\`\`javascript
+const arr = [1, 2, 3, 4, 5];
+
+// Remove from end
+arr.pop(); // Returns 5, arr is now [1, 2, 3, 4]
+
+// Remove from beginning
+arr.shift(); // Returns 1, arr is now [2, 3, 4]
+
+// Remove at specific index
+arr.splice(1, 1); // Remove 1 element at index 1: [2, 4]
+
+// Remove multiple
+const arr2 = [1, 2, 3, 4, 5];
+arr2.splice(1, 3); // Remove 3 elements starting at index 1: [1, 5]
+\`\`\`
+
+## Essential Array Methods
+
+### map() - Transform Each Element
+
+Creates a new array by transforming each element.
+
+\`\`\`javascript
+const numbers = [1, 2, 3, 4, 5];
+
+// Double each number
+const doubled = numbers.map(n => n * 2); // [2, 4, 6, 8, 10]
+
+// Convert to strings
+const strings = numbers.map(n => n.toString()); // ["1", "2", "3", "4", "5"]
+
+// Transform objects
+const users = [
+  { name: "Alice", age: 30 },
+  { name: "Bob", age: 25 }
+];
+const names = users.map(user => user.name); // ["Alice", "Bob"]
+\`\`\`
+
+### filter() - Select Elements
+
+Creates a new array with elements that pass a test.
+
+\`\`\`javascript
+const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+// Get even numbers
+const evens = numbers.filter(n => n % 2 === 0); // [2, 4, 6, 8, 10]
+
+// Get numbers greater than 5
+const large = numbers.filter(n => n > 5); // [6, 7, 8, 9, 10]
+
+// Filter objects
+const users = [
+  { name: "Alice", age: 30 },
+  { name: "Bob", age: 15 },
+  { name: "Charlie", age: 25 }
+];
+const adults = users.filter(user => user.age >= 18);
+// [{ name: "Alice", age: 30 }, { name: "Charlie", age: 25 }]
+\`\`\`
+
+### reduce() - Accumulate Values
+
+Reduces an array to a single value by applying a function to each element.
+
+\`\`\`javascript
+const numbers = [1, 2, 3, 4, 5];
+
+// Sum all numbers
+const sum = numbers.reduce((acc, n) => acc + n, 0); // 15
+
+// Find maximum
+const max = numbers.reduce((acc, n) => n > acc ? n : acc, numbers[0]); // 5
+
+// Count occurrences
+const words = ["apple", "banana", "apple", "cherry", "banana"];
+const counts = words.reduce((acc, word) => {
+  acc[word] = (acc[word] || 0) + 1;
+  return acc;
+}, {});
+// { apple: 2, banana: 2, cherry: 1 }
+
+// Flatten array
+const nested = [[1, 2], [3, 4], [5]];
+const flat = nested.reduce((acc, arr) => acc.concat(arr), []); // [1, 2, 3, 4, 5]
+\`\`\`
+
+### forEach() - Execute for Each Element
+
+Executes a function for each element (doesn't return a new array).
+
+\`\`\`javascript
+const fruits = ["apple", "banana", "cherry"];
+
+fruits.forEach((fruit, index) => {
+  console.log(\`\${index + 1}. \${fruit}\`);
+});
+// 1. apple
+// 2. banana
+// 3. cherry
+
+// Side effects (modifying external variables)
+let sum = 0;
+[1, 2, 3, 4].forEach(n => {
+  sum += n;
+});
+console.log(sum); // 10
+\`\`\`
+
+## More Useful Array Methods
+
+### find() and findIndex()
+
+\`\`\`javascript
+const users = [
+  { id: 1, name: "Alice" },
+  { id: 2, name: "Bob" },
+  { id: 3, name: "Charlie" }
+];
+
+// Find first matching element
+const user = users.find(u => u.id === 2); // { id: 2, name: "Bob" }
+
+// Find index of first matching element
+const index = users.findIndex(u => u.name === "Bob"); // 1
+\`\`\`
+
+### some() and every()
+
+\`\`\`javascript
+const numbers = [1, 2, 3, 4, 5];
+
+// Check if any element passes test
+const hasEven = numbers.some(n => n % 2 === 0); // true
+
+// Check if all elements pass test
+const allPositive = numbers.every(n => n > 0); // true
+\`\`\`
+
+### includes()
+
+\`\`\`javascript
+const fruits = ["apple", "banana", "cherry"];
+
+console.log(fruits.includes("banana")); // true
+console.log(fruits.includes("orange")); // false
+\`\`\`
+
+### slice() and splice()
+
+\`\`\`javascript
+const arr = [1, 2, 3, 4, 5];
+
+// slice() - returns new array (doesn't modify original)
+const part = arr.slice(1, 4); // [2, 3, 4] (from index 1 to 3)
+const copy = arr.slice(); // [1, 2, 3, 4, 5] (shallow copy)
+const lastTwo = arr.slice(-2); // [4, 5] (last 2 elements)
+
+// splice() - modifies original array
+const arr2 = [1, 2, 3, 4, 5];
+arr2.splice(2, 2, "a", "b"); // Remove 2 elements at index 2, insert "a", "b"
+// arr2 is now [1, 2, "a", "b", 5]
+\`\`\`
+
+### sort()
+
+\`\`\`javascript
+const numbers = [3, 1, 4, 1, 5, 9, 2, 6];
+
+// Sort numbers (modifies original)
+numbers.sort((a, b) => a - b); // [1, 1, 2, 3, 4, 5, 6, 9]
+
+const users = [
+  { name: "Alice", age: 30 },
+  { name: "Bob", age: 25 },
+  { name: "Charlie", age: 35 }
+];
+
+// Sort by age
+users.sort((a, b) => a.age - b.age);
+\`\`\`
+
+## Array Destructuring (ES6+)
+
+\`\`\`javascript
+const fruits = ["apple", "banana", "cherry"];
+
+// Basic destructuring
+const [first, second, third] = fruits;
+console.log(first); // "apple"
+
+// Skip elements
+const [a, , c] = fruits; // Skip second element
+
+// Rest operator
+const [head, ...tail] = fruits; // head = "apple", tail = ["banana", "cherry"]
+
+// Default values
+const [x = "default", y] = []; // x = "default", y = undefined
+
+// Swap variables
+let a = 1, b = 2;
+[a, b] = [b, a]; // a = 2, b = 1
+\`\`\`
+
+## Multidimensional Arrays
+
+\`\`\`javascript
+// 2D array (matrix)
+const matrix = [
+  [1, 2, 3],
+  [4, 5, 6],
+  [7, 8, 9]
+];
+
+console.log(matrix[1][2]); // 6 (row 1, column 2)
+
+// Iterating 2D array
+matrix.forEach(row => {
+  row.forEach(cell => {
+    console.log(cell);
+  });
+});
+\`\`\`
+
+## Common Patterns
+
+### Chaining Methods
+
+\`\`\`javascript
+const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+const result = numbers
+  .filter(n => n % 2 === 0) // [2, 4, 6, 8, 10]
+  .map(n => n * 2) // [4, 8, 12, 16, 20]
+  .reduce((sum, n) => sum + n, 0); // 60
+\`\`\`
+
+### Converting Array-like Objects
+
+\`\`\`javascript
+// Convert NodeList to Array
+const divs = document.querySelectorAll("div");
+const divArray = Array.from(divs);
+
+// Convert arguments to Array
+function sum() {
+  const args = Array.from(arguments);
+  return args.reduce((sum, n) => sum + n, 0);
+}
+
+// Using spread operator
+const divArray2 = [...document.querySelectorAll("div")];
+\`\`\`
+
+## Performance Considerations
+
+\`\`\`javascript
+// For large arrays, consider performance
+const largeArray = new Array(1000000).fill(0).map((_, i) => i);
+
+// O(n) operations
+largeArray.forEach(n => { /* ... */ }); // Fast
+largeArray.map(n => n * 2); // Fast
+
+// O(n²) operations (avoid nested loops)
+// largeArray.forEach(a => {
+//   largeArray.forEach(b => { /* ... */ }); // Very slow!
+// });
+
+// Use Set for fast lookups
+const set = new Set(largeArray);
+set.has(500000); // O(1) - very fast
+\`\`\`
+
+## Best Practices
+
+1. **Use map/filter/reduce**: Prefer functional methods over loops
+2. **Don't mutate in map/filter**: These should be pure transformations
+3. **Use const for arrays**: Prevents reassignment, but allows mutation
+4. **Prefer slice() over splice()**: slice() doesn't mutate
+5. **Use includes() for simple checks**: More readable than indexOf() !== -1
+
+\`\`\`javascript
+// Good
+const doubled = numbers.map(n => n * 2);
+const evens = numbers.filter(n => n % 2 === 0);
+
+// Bad
+const doubled = [];
+for (let i = 0; i < numbers.length; i++) {
+  doubled.push(numbers[i] * 2);
+}
+\`\`\`
+
+Mastering arrays and their methods is crucial for JavaScript development. Practice using map, filter, and reduce - they're the foundation of functional programming in JavaScript and appear everywhere in modern codebases.`,
 
   '1-objects-prototypes': `Objects store key-value pairs. Almost everything in JavaScript is an object. Prototypes form the basis of inheritance: objects can delegate to another object for properties they don't have.
 
@@ -142,23 +1198,373 @@ const [head, ...tail] = nums;
 
 Adopt these patterns in new code; they're standard in modern JavaScript.`,
 
-  '1-async-await': `Async operations (e.g. fetching data) don't block the main thread. Promises represent a future value; async/await lets you write asynchronous code in a linear style.
+  '1-async-await': `# Promises and Async/Await in JavaScript
 
-**Key points:**
-- A Promise is pending, then fulfilled with a value or rejected with an error.
-- await can only be used inside an async function.
-- Always handle errors with try/catch around await or .catch on the promise.
+Asynchronous programming is fundamental to JavaScript. Since JavaScript is single-threaded, it uses asynchronous operations to handle time-consuming tasks (like network requests, file I/O, timers) without blocking the main thread. Understanding Promises and async/await is essential for modern JavaScript development.
+
+## Why Asynchronous Programming?
+
+JavaScript runs in a single thread, meaning it can only do one thing at a time. Without asynchronous programming, any long-running operation (like fetching data from a server) would freeze the entire application.
 
 \`\`\`javascript
-async function fetchUser(id) {
-  const res = await fetch(\`/api/users/\${id}\`);
-  if (!res.ok) throw new Error("Failed to fetch");
-  return res.json();
+// Synchronous (blocking) - DON'T DO THIS
+function fetchDataSync() {
+  // This would freeze the browser for 3 seconds
+  const start = Date.now();
+  while (Date.now() - start < 3000) { } // Wait 3 seconds
+  return "Data";
 }
-fetchUser(1).then(user => console.log(user)).catch(err => console.error(err));
+
+// Asynchronous (non-blocking) - CORRECT
+async function fetchDataAsync() {
+  // This doesn't block - other code can run
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  return "Data";
+}
 \`\`\`
 
-Use async/await for readability; understand Promises for debugging and interoperability.`,
+## Understanding Promises
+
+A Promise represents a value that will be available in the future. It's an object that represents the eventual completion (or failure) of an asynchronous operation.
+
+### Promise States
+
+A Promise has three states:
+1. **Pending**: Initial state, operation not completed
+2. **Fulfilled**: Operation completed successfully
+3. **Rejected**: Operation failed
+
+\`\`\`javascript
+// Creating a Promise
+const promise = new Promise((resolve, reject) => {
+  // Simulate async operation
+  setTimeout(() => {
+    const success = true;
+    if (success) {
+      resolve("Operation succeeded!"); // Fulfilled
+    } else {
+      reject(new Error("Operation failed!")); // Rejected
+    }
+  }, 1000);
+});
+
+// Using the Promise
+promise
+  .then(result => console.log(result)) // "Operation succeeded!"
+  .catch(error => console.error(error)); // Handles rejection
+\`\`\`
+
+### Promise Methods
+
+\`\`\`javascript
+// then() - handles fulfillment
+promise.then(value => {
+  console.log("Success:", value);
+});
+
+// catch() - handles rejection
+promise.catch(error => {
+  console.error("Error:", error);
+});
+
+// finally() - runs regardless of outcome
+promise.finally(() => {
+  console.log("Operation completed");
+});
+
+// Chaining
+fetch("/api/users")
+  .then(response => response.json())
+  .then(users => {
+    console.log(users);
+    return fetch(\`/api/users/\${users[0].id}\`);
+  })
+  .then(response => response.json())
+  .then(user => console.log(user))
+  .catch(error => console.error("Error:", error));
+\`\`\`
+
+### Promise.all() - Wait for All
+
+\`\`\`javascript
+// Wait for all promises to resolve
+const promise1 = fetch("/api/users");
+const promise2 = fetch("/api/posts");
+const promise3 = fetch("/api/comments");
+
+Promise.all([promise1, promise2, promise3])
+  .then(responses => {
+    // All promises resolved
+    return Promise.all(responses.map(r => r.json()));
+  })
+  .then(([users, posts, comments]) => {
+    console.log("All data loaded:", { users, posts, comments });
+  })
+  .catch(error => {
+    // If any promise rejects, this catches it
+    console.error("One or more requests failed:", error);
+  });
+\`\`\`
+
+### Promise.allSettled() - Wait for All (Regardless of Outcome)
+
+\`\`\`javascript
+// Wait for all promises to settle (fulfilled or rejected)
+Promise.allSettled([promise1, promise2, promise3])
+  .then(results => {
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") {
+        console.log(\`Promise \${index} succeeded:\`, result.value);
+      } else {
+        console.log(\`Promise \${index} failed:\`, result.reason);
+      }
+    });
+  });
+\`\`\`
+
+### Promise.race() - First to Complete
+
+\`\`\`javascript
+// Returns the first promise that settles
+const timeout = new Promise((_, reject) => 
+  setTimeout(() => reject(new Error("Timeout")), 5000)
+);
+const fetchPromise = fetch("/api/data");
+
+Promise.race([fetchPromise, timeout])
+  .then(response => response.json())
+  .then(data => console.log("Data:", data))
+  .catch(error => console.error("Error or timeout:", error));
+\`\`\`
+
+## Async/Await Syntax
+
+\`async/await\` is syntactic sugar over Promises that makes asynchronous code look and behave more like synchronous code.
+
+### Basic Async Function
+
+\`\`\`javascript
+// async function always returns a Promise
+async function fetchUser(id) {
+  // await pauses execution until Promise resolves
+  const response = await fetch(\`/api/users/\${id}\`);
+  
+  if (!response.ok) {
+    throw new Error(\`Failed to fetch user \${id}\`);
+  }
+  
+  const user = await response.json();
+  return user; // Automatically wrapped in Promise
+}
+
+// Using async function
+fetchUser(1)
+  .then(user => console.log(user))
+  .catch(error => console.error(error));
+\`\`\`
+
+### Error Handling with try/catch
+
+\`\`\`javascript
+async function fetchUserSafe(id) {
+  try {
+    const response = await fetch(\`/api/users/\${id}\`);
+    
+    if (!response.ok) {
+      throw new Error(\`HTTP error! status: \${response.status}\`);
+    }
+    
+    const user = await response.json();
+    return user;
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    // Return default or rethrow
+    throw error; // Re-throw to let caller handle
+  }
+}
+
+// Using with try/catch
+async function displayUser(id) {
+  try {
+    const user = await fetchUserSafe(id);
+    console.log("User:", user);
+  } catch (error) {
+    console.error("Failed to display user:", error);
+  }
+}
+\`\`\`
+
+### Sequential vs Parallel Execution
+
+\`\`\`javascript
+// Sequential (slow - waits for each)
+async function fetchSequential() {
+  const user1 = await fetch("/api/users/1"); // Wait
+  const user2 = await fetch("/api/users/2"); // Then wait
+  const user3 = await fetch("/api/users/3"); // Then wait
+  
+  return [user1, user2, user3];
+}
+
+// Parallel (fast - all at once)
+async function fetchParallel() {
+  const [user1, user2, user3] = await Promise.all([
+    fetch("/api/users/1"),
+    fetch("/api/users/2"),
+    fetch("/api/users/3")
+  ]);
+  
+  return [user1, user2, user3];
+}
+\`\`\`
+
+### Real-World Examples
+
+\`\`\`javascript
+// Fetching data with error handling
+async function getUserData(userId) {
+  try {
+    const [user, posts, comments] = await Promise.all([
+      fetch(\`/api/users/\${userId}\`).then(r => r.json()),
+      fetch(\`/api/users/\${userId}/posts\`).then(r => r.json()),
+      fetch(\`/api/users/\${userId}/comments\`).then(r => r.json())
+    ]);
+    
+    return { user, posts, comments };
+  } catch (error) {
+    console.error("Error loading user data:", error);
+    throw error;
+  }
+}
+
+// Retry logic
+async function fetchWithRetry(url, retries = 3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) return await response.json();
+      throw new Error(\`HTTP \${response.status}\`);
+    } catch (error) {
+      if (i === retries - 1) throw error;
+      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+    }
+  }
+}
+
+// Timeout wrapper
+async function fetchWithTimeout(url, timeout = 5000) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    return await response.json();
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error("Request timeout");
+    }
+    throw error;
+  }
+}
+\`\`\`
+
+### Common Patterns
+
+\`\`\`javascript
+// Loading state pattern
+async function loadData() {
+  let loading = true;
+  let data = null;
+  let error = null;
+  
+  try {
+    data = await fetch("/api/data").then(r => r.json());
+  } catch (err) {
+    error = err;
+  } finally {
+    loading = false;
+  }
+  
+  return { loading, data, error };
+}
+
+// Batch processing
+async function processItems(items) {
+  const results = [];
+  
+  // Process in batches of 5
+  for (let i = 0; i < items.length; i += 5) {
+    const batch = items.slice(i, i + 5);
+    const batchResults = await Promise.all(
+      batch.map(item => processItem(item))
+    );
+    results.push(...batchResults);
+  }
+  
+  return results;
+}
+\`\`\`
+
+## Best Practices
+
+1. **Always handle errors**: Use try/catch or .catch()
+2. **Use Promise.all() for parallel operations**: Don't await sequentially
+3. **Don't forget await**: Missing await can cause bugs
+4. **Use async/await for readability**: But understand Promises for debugging
+5. **Avoid mixing styles**: Stick to async/await or Promises, don't mix unnecessarily
+
+\`\`\`javascript
+// Good
+async function goodExample() {
+  try {
+    const data = await fetchData();
+    return processData(data);
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+// Bad - missing error handling
+async function badExample() {
+  const data = await fetchData(); // What if this fails?
+  return processData(data);
+}
+
+// Bad - unnecessary mixing
+async function confusingExample() {
+  await fetchData().then(data => {
+    processData(data).then(result => {
+      // Hard to read and debug
+    });
+  });
+}
+\`\`\`
+
+## Common Mistakes
+
+1. **Forgetting await**: Results in a Promise object instead of the value
+2. **Not handling errors**: Unhandled promise rejections can crash your app
+3. **Sequential when parallel would work**: Using await in a loop instead of Promise.all()
+4. **Async in forEach**: forEach doesn't wait for async operations
+
+\`\`\`javascript
+// Wrong - forEach doesn't wait
+items.forEach(async item => {
+  await processItem(item); // This doesn't wait!
+});
+
+// Correct - use for...of
+for (const item of items) {
+  await processItem(item); // This waits
+}
+
+// Or use Promise.all for parallel
+await Promise.all(items.map(item => processItem(item)));
+\`\`\`
+
+Mastering async/await and Promises is crucial for modern JavaScript development. Practice handling errors, running operations in parallel, and understanding when to use each approach.`,
 
   '1-closures': `A closure is when a function keeps access to variables from its outer scope even after that outer function has returned. Higher-order functions take or return functions.
 
@@ -285,20 +1691,365 @@ btn.addEventListener("click", () => {
 Practice selecting elements and responding to events; it's the foundation of front-end interactivity.`,
 
   // —— Python ——
-  '2-intro-python': `Python is a general-purpose language known for clear syntax and readability. It's used in web development, data science, automation, and scripting.
+  '2-intro-python': `# Introduction to Python
 
-**Key points:**
-- Indentation defines blocks (no curly braces); use four spaces.
-- Run code with python script.py or an interactive session (python or ipython).
-- The standard library and PyPI offer modules for almost any task.
+Python is a high-level, interpreted programming language known for its simplicity, readability, and versatility. Created by Guido van Rossum and first released in 1991, Python has become one of the most popular programming languages in the world, powering everything from web applications to data science, artificial intelligence, automation, and scientific computing.
+
+## Why Python?
+
+Python's design philosophy emphasizes code readability and simplicity. The language's syntax is clean and intuitive, making it an excellent choice for beginners while remaining powerful enough for complex applications. Python's motto, "There should be one—and preferably only one—obvious way to do it," reflects its focus on clarity and simplicity.
+
+### Key Advantages
+
+1. **Readability**: Python code reads almost like English, making it easy to understand
+2. **Versatility**: Used in web development, data science, AI, automation, and more
+3. **Large Ecosystem**: Extensive standard library and third-party packages (PyPI)
+4. **Community**: Huge, supportive community with abundant resources
+5. **Cross-Platform**: Runs on Windows, macOS, Linux, and more
+
+## Python's Philosophy: The Zen of Python
+
+Python follows a set of principles known as "The Zen of Python":
 
 \`\`\`python
+import this
+# Beautiful is better than ugly.
+# Explicit is better than implicit.
+# Simple is better than complex.
+# Complex is better than complicated.
+# Readability counts.
+\`\`\`
+
+## Installing Python
+
+### Windows
+1. Download from python.org
+2. Run installer and check "Add Python to PATH"
+3. Verify: \`python --version\`
+
+### macOS
+\`\`\`bash
+# Using Homebrew
+brew install python3
+
+# Or download from python.org
+\`\`\`
+
+### Linux
+\`\`\`bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install python3 python3-pip
+
+# Fedora
+sudo dnf install python3 python3-pip
+\`\`\`
+
+## Your First Python Program
+
+\`\`\`python
+# hello.py
 print("Hello, World!")
 name = "CodeVerse"
 print(f"Learning with {name}")
 \`\`\`
 
-Start with small scripts and the REPL. Focus on readability and consistency.`,
+Run it:
+\`\`\`bash
+python hello.py
+# or
+python3 hello.py
+\`\`\`
+
+## Python's Unique Features
+
+### 1. Indentation-Based Syntax
+
+Unlike most languages that use curly braces \`{}\`, Python uses indentation to define code blocks. This enforces consistent formatting and readability.
+
+\`\`\`python
+# Correct indentation (4 spaces recommended)
+if True:
+    print("This is indented")
+    print("So is this")
+    if True:
+        print("Nested indentation")
+
+# Wrong - will cause IndentationError
+# if True:
+# print("Not indented")  # Error!
+\`\`\`
+
+**Best Practice**: Use 4 spaces for indentation (PEP 8 standard). Most editors can be configured to insert spaces when you press Tab.
+
+### 2. Dynamic Typing
+
+Python determines variable types automatically at runtime.
+
+\`\`\`python
+# No type declarations needed
+name = "Alice"        # str
+age = 30              # int
+price = 19.99         # float
+is_active = True       # bool
+
+# Types can be checked
+print(type(name))     # <class 'str'>
+print(type(age))      # <class 'int'>
+
+# Type hints (optional, Python 3.5+)
+def greet(name: str) -> str:
+    return f"Hello, {name}"
+\`\`\`
+
+### 3. Interactive REPL
+
+Python's Read-Eval-Print Loop (REPL) lets you test code interactively.
+
+\`\`\`bash
+$ python3
+Python 3.11.0 (default, Oct 24 2022, 10:07:16)
+>>> print("Hello!")
+Hello!
+>>> 2 + 2
+4
+>>> name = "Python"
+>>> f"Learning {name}"
+'Learning Python'
+>>> exit()
+\`\`\`
+
+## Python Versions
+
+- **Python 2**: Legacy version (end of life in 2020) - Don't use
+- **Python 3**: Current version - Always use Python 3.x
+
+Check your version:
+\`\`\`bash
+python3 --version
+# Python 3.11.0
+\`\`\`
+
+## Basic Syntax
+
+### Variables and Assignment
+
+\`\`\`python
+# Simple assignment
+x = 10
+name = "Alice"
+
+# Multiple assignment
+a, b, c = 1, 2, 3
+x = y = z = 0  # All set to 0
+
+# Swapping (Pythonic!)
+a, b = b, a
+\`\`\`
+
+### Comments
+
+\`\`\`python
+# Single-line comment
+
+"""
+Multi-line comment
+(actually a string, but commonly used for documentation)
+"""
+
+def function():
+    """Docstring - describes what the function does"""
+    pass
+\`\`\`
+
+### Print Function
+
+\`\`\`python
+# Basic print
+print("Hello, World!")
+
+# Multiple arguments (automatically adds space)
+print("Hello", "World", "!")  # Hello World !
+
+# Custom separator
+print("Hello", "World", sep="-")  # Hello-World
+
+# End with custom character (default is newline)
+print("Hello", end="")
+print("World")  # HelloWorld
+
+# Formatted strings (f-strings, Python 3.6+)
+name = "Alice"
+age = 30
+print(f"{name} is {age} years old")  # Alice is 30 years old
+
+# Old-style formatting (still works)
+print("{} is {} years old".format(name, age))
+print("%s is %d years old" % (name, age))
+\`\`\`
+
+## Python's Standard Library
+
+Python comes with a vast standard library - "batteries included":
+
+\`\`\`python
+# File operations
+import os
+import shutil
+from pathlib import Path
+
+# Date and time
+from datetime import datetime, timedelta
+
+# JSON handling
+import json
+
+# HTTP requests
+import urllib.request
+# Or use requests library: pip install requests
+
+# Regular expressions
+import re
+
+# Math operations
+import math
+import random
+import statistics
+
+# Collections
+from collections import Counter, defaultdict, deque
+
+# And many more!
+\`\`\`
+
+## Package Management with pip
+
+pip is Python's package installer. It connects to PyPI (Python Package Index) with thousands of packages.
+
+\`\`\`bash
+# Install a package
+pip install requests
+
+# Install specific version
+pip install requests==2.28.0
+
+# Install from requirements file
+pip install -r requirements.txt
+
+# List installed packages
+pip list
+
+# Show package info
+pip show requests
+
+# Uninstall
+pip uninstall requests
+\`\`\`
+
+## Virtual Environments
+
+Virtual environments isolate project dependencies, preventing conflicts.
+
+\`\`\`bash
+# Create virtual environment
+python3 -m venv myenv
+
+# Activate (Linux/macOS)
+source myenv/bin/activate
+
+# Activate (Windows)
+myenv\\Scripts\\activate
+
+# Deactivate
+deactivate
+
+# Create requirements.txt
+pip freeze > requirements.txt
+\`\`\`
+
+## Python Use Cases
+
+### 1. Web Development
+- **Frameworks**: Django, Flask, FastAPI
+- **Use cases**: Backend APIs, web applications, REST services
+
+### 2. Data Science & Analytics
+- **Libraries**: NumPy, Pandas, Matplotlib, Seaborn
+- **Use cases**: Data analysis, visualization, statistical modeling
+
+### 3. Machine Learning & AI
+- **Libraries**: TensorFlow, PyTorch, Scikit-learn
+- **Use cases**: Neural networks, predictive modeling, NLP
+
+### 4. Automation & Scripting
+- **Use cases**: File operations, system administration, task automation
+
+### 5. Scientific Computing
+- **Libraries**: SciPy, SymPy
+- **Use cases**: Scientific calculations, simulations
+
+## Python Style Guide (PEP 8)
+
+PEP 8 is Python's official style guide:
+
+\`\`\`python
+# Naming conventions
+CONSTANT_NAME = "UPPER_CASE"      # Constants
+variable_name = "snake_case"      # Variables and functions
+ClassName = "PascalCase"           # Classes
+
+# Line length: max 79 characters (or 99 for some teams)
+# Indentation: 4 spaces
+# Blank lines: 2 between top-level definitions, 1 between methods
+\`\`\`
+
+## Common Beginner Mistakes
+
+1. **Mixing tabs and spaces**: Use spaces consistently
+2. **Forgetting colons**: Required after if, for, def, etc.
+3. **Case sensitivity**: \`Name\` and \`name\` are different
+4. **Indentation errors**: Most common syntax error
+5. **Import errors**: Make sure packages are installed
+
+\`\`\`python
+# Common errors
+# if True  # Missing colon!
+#     print("Hello")
+
+# name = "Alice"
+# print(Name)  # NameError: name 'Name' is not defined
+
+# import nonexistent  # ModuleNotFoundError
+\`\`\`
+
+## Getting Help
+
+\`\`\`python
+# Built-in help
+help(print)
+help(str)
+
+# Interactive help in REPL
+>>> help(str.split)
+
+# Online resources
+# - Official docs: docs.python.org
+# - Stack Overflow
+# - Real Python
+# - Python.org tutorials
+\`\`\`
+
+## Next Steps
+
+Now that you understand Python basics:
+1. Practice with the REPL
+2. Write small scripts
+3. Learn about data types (strings, lists, dictionaries)
+4. Explore control flow (if/else, loops)
+5. Study functions and modules
+6. Work on projects to apply your knowledge
+
+Python's simplicity and power make it an excellent language for both beginners and experienced developers. Focus on writing clean, readable code and leveraging Python's extensive ecosystem.`,
 
   '2-lists-dicts': `Lists are ordered, mutable sequences. Dictionaries store key-value pairs and are optimized for lookups. Both are used in almost every Python program.
 
@@ -746,27 +2497,442 @@ type ReturnType<T> = T extends (...args: any[]) => infer R ? R : never;
 Use these when building reusable type utilities; study built-in types in lib.d.ts for inspiration.`,
 
   // —— React ——
-  '4-components-jsx': `React UIs are built from components: functions or classes that return a description of the UI. JSX is syntax that looks like HTML but compiles to React.createElement calls.
+  '4-components-jsx': `# Components and JSX in React
 
-**Key points:**
-- Components return a single root element (or Fragment); use PascalCase for components.
-- JSX uses className and camelCase for event props (onClick, onChange).
-- Expressions go in curly braces; never put objects in the body without spreading or rendering.
+React revolutionized front-end development by introducing a component-based architecture. Components are the building blocks of React applications - they're reusable, composable pieces of code that return a description of the UI. Understanding components and JSX is fundamental to React development.
+
+## What Are Components?
+
+A component is a JavaScript function or class that returns React elements (typically written in JSX). Components allow you to:
+- **Split UI into reusable pieces**: Write once, use anywhere
+- **Encapsulate logic and presentation**: Keep related code together
+- **Build complex UIs from simple parts**: Compose small components into larger ones
+- **Manage state and props**: Handle data flow in your application
+
+## Function Components (Modern Approach)
+
+Function components are the recommended way to write React components. They're simpler, easier to test, and work seamlessly with React Hooks.
 
 \`\`\`javascript
+// Simple function component
 function Welcome({ name }) {
   return <h1>Hello, {name}!</h1>;
 }
+
+// Arrow function component (equivalent)
+const Welcome = ({ name }) => {
+  return <h1>Hello, {name}!</h1>;
+};
+
+// Usage
+<Welcome name="CodeVerse" />
+\`\`\`
+
+## Understanding JSX
+
+JSX (JavaScript XML) is a syntax extension that lets you write HTML-like code in JavaScript. It's not HTML - it's syntactic sugar that compiles to \`React.createElement()\` calls.
+
+### JSX vs HTML
+
+\`\`\`javascript
+// JSX
+const element = <h1 className="title">Hello, World!</h1>;
+
+// What it compiles to (you don't write this)
+const element = React.createElement(
+  'h1',
+  { className: 'title' },
+  'Hello, World!'
+);
+
+// HTML (for comparison)
+// <h1 class="title">Hello, World!</h1>
+\`\`\`
+
+### Key JSX Differences from HTML
+
+1. **className instead of class**: \`class\` is a reserved word in JavaScript
+2. **camelCase for attributes**: \`onClick\`, \`onChange\`, \`tabIndex\`
+3. **Self-closing tags**: Must have \`/\` before \`>\`
+4. **JavaScript expressions**: Use \`{}\` to embed JavaScript
+
+\`\`\`javascript
+// className (not class)
+<div className="container">Content</div>
+
+// camelCase event handlers
+<button onClick={handleClick}>Click me</button>
+<input onChange={handleChange} />
+
+// Self-closing tags
+<img src="image.jpg" alt="Description" />
+<br />
+<hr />
+
+// JavaScript expressions in {}
+const name = "Alice";
+<div>Hello, {name}!</div>
+<div>2 + 2 = {2 + 2}</div>
+\`\`\`
+
+## Component Composition
+
+Components can contain other components, creating a tree structure.
+
+\`\`\`javascript
+// Child component
+function Button({ text, onClick }) {
+  return <button onClick={onClick}>{text}</button>;
+}
+
+// Parent component
 function App() {
+  const handleClick = () => alert("Clicked!");
+  
   return (
     <div className="app">
-      <Welcome name="CodeVerse" />
+      <h1>My App</h1>
+      <Button text="Click me" onClick={handleClick} />
+      <Button text="Another button" onClick={() => console.log("Hi")} />
     </div>
   );
 }
 \`\`\`
 
-Think in components: small, reusable pieces that receive data via props.`,
+## JSX Rules
+
+### 1. Single Root Element
+
+Components must return a single root element. Use React Fragment (\`<>\` or \`<Fragment>\`) to avoid extra DOM nodes.
+
+\`\`\`javascript
+// Wrong - multiple root elements
+function BadComponent() {
+  return (
+    <h1>Title</h1>
+    <p>Content</p>
+  );
+}
+
+// Correct - single root
+function GoodComponent() {
+  return (
+    <div>
+      <h1>Title</h1>
+      <p>Content</p>
+    </div>
+  );
+}
+
+// Better - Fragment (no extra DOM node)
+function BetterComponent() {
+  return (
+    <>
+      <h1>Title</h1>
+      <p>Content</p>
+    </>
+  );
+}
+\`\`\`
+
+### 2. JavaScript Expressions in Curly Braces
+
+\`\`\`javascript
+const name = "Alice";
+const age = 30;
+const isActive = true;
+const items = ["apple", "banana", "cherry"];
+
+function Component() {
+  return (
+    <div>
+      {/* Variables */}
+      <p>Name: {name}</p>
+      
+      {/* Expressions */}
+      <p>Age next year: {age + 1}</p>
+      
+      {/* Conditionals */}
+      {isActive && <p>User is active</p>}
+      {age >= 18 ? <p>Adult</p> : <p>Minor</p>}
+      
+      {/* Arrays */}
+      <ul>
+        {items.map(item => <li key={item}>{item}</li>)}
+      </ul>
+      
+      {/* Function calls */}
+      <p>Uppercase: {name.toUpperCase()}</p>
+    </div>
+  );
+}
+\`\`\`
+
+### 3. Don't Put Objects Directly in JSX
+
+\`\`\`javascript
+// Wrong - object in JSX
+function BadComponent() {
+  const style = { color: "red" };
+  return <div>{style}</div>; // Error!
+}
+
+// Correct - use object properties
+function GoodComponent() {
+  const style = { color: "red" };
+  return <div style={style}>Content</div>; // Works!
+  
+  // Or inline
+  return <div style={{ color: "red" }}>Content</div>;
+}
+\`\`\`
+
+## Props (Properties)
+
+Props are how you pass data to components. They're read-only and flow down from parent to child.
+
+\`\`\`javascript
+// Component receiving props
+function UserCard({ name, email, age }) {
+  return (
+    <div className="user-card">
+      <h2>{name}</h2>
+      <p>Email: {email}</p>
+      <p>Age: {age}</p>
+    </div>
+  );
+}
+
+// Using the component with props
+function App() {
+  return (
+    <div>
+      <UserCard 
+        name="Alice" 
+        email="alice@example.com" 
+        age={30} 
+      />
+      <UserCard 
+        name="Bob" 
+        email="bob@example.com" 
+        age={25} 
+      />
+    </div>
+  );
+}
+\`\`\`
+
+### Default Props
+
+\`\`\`javascript
+function Greeting({ name = "Guest", greeting = "Hello" }) {
+  return <p>{greeting}, {name}!</p>;
+}
+
+// Usage
+<Greeting /> // "Hello, Guest!"
+<Greeting name="Alice" /> // "Hello, Alice!"
+<Greeting name="Bob" greeting="Hi" /> // "Hi, Bob!"
+\`\`\`
+
+### Props Destructuring
+
+\`\`\`javascript
+// Without destructuring
+function Component(props) {
+  return <div>{props.name} - {props.age}</div>;
+}
+
+// With destructuring (preferred)
+function Component({ name, age }) {
+  return <div>{name} - {age}</div>;
+}
+
+// With rest operator
+function Component({ name, age, ...otherProps }) {
+  return (
+    <div {...otherProps}>
+      {name} - {age}
+    </div>
+  );
+}
+\`\`\`
+
+## Conditional Rendering
+
+\`\`\`javascript
+function UserStatus({ isLoggedIn, userName }) {
+  // If/else
+  if (isLoggedIn) {
+    return <p>Welcome back, {userName}!</p>;
+  } else {
+    return <p>Please log in</p>;
+  }
+}
+
+// Ternary operator
+function UserStatus({ isLoggedIn, userName }) {
+  return (
+    <div>
+      {isLoggedIn ? (
+        <p>Welcome back, {userName}!</p>
+      ) : (
+        <p>Please log in</p>
+      )}
+    </div>
+  );
+}
+
+// Logical AND (for simple cases)
+function UserStatus({ isLoggedIn, userName }) {
+  return (
+    <div>
+      {isLoggedIn && <p>Welcome back, {userName}!</p>}
+      {!isLoggedIn && <p>Please log in</p>}
+    </div>
+  );
+}
+\`\`\`
+
+## Lists and Keys
+
+When rendering lists, React needs a unique \`key\` prop for each item.
+
+\`\`\`javascript
+function TodoList({ todos }) {
+  return (
+    <ul>
+      {todos.map(todo => (
+        <li key={todo.id}>
+          {todo.text}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Keys should be stable, unique, and predictable
+// Good: ID from data
+{users.map(user => <UserCard key={user.id} user={user} />)}
+
+// Bad: Array index (only if list never reorders)
+{items.map((item, index) => <Item key={index} item={item} />)}
+\`\`\`
+
+## Event Handling
+
+\`\`\`javascript
+function Button() {
+  // Define handler function
+  const handleClick = () => {
+    console.log("Button clicked!");
+  };
+  
+  // Inline handler
+  const handleMouseOver = () => alert("Hovered!");
+  
+  return (
+    <button 
+      onClick={handleClick}
+      onMouseOver={handleMouseOver}
+    >
+      Click me
+    </button>
+  );
+}
+
+// With parameters
+function ButtonList() {
+  const handleClick = (id) => {
+    console.log(\`Button \${id} clicked\`);
+  };
+  
+  return (
+    <div>
+      <button onClick={() => handleClick(1)}>Button 1</button>
+      <button onClick={() => handleClick(2)}>Button 2</button>
+    </div>
+  );
+}
+\`\`\`
+
+## Styling Components
+
+\`\`\`javascript
+// Inline styles (object)
+function StyledComponent() {
+  const style = {
+    color: "blue",
+    fontSize: "20px",
+    padding: "10px"
+  };
+  
+  return <div style={style}>Content</div>;
+}
+
+// CSS classes (preferred)
+function Component() {
+  return <div className="container">Content</div>;
+}
+
+// CSS Modules
+import styles from './Component.module.css';
+function Component() {
+  return <div className={styles.container}>Content</div>;
+}
+\`\`\`
+
+## Component Best Practices
+
+1. **Single Responsibility**: Each component should do one thing
+2. **Descriptive Names**: Use PascalCase and clear names
+3. **Keep Components Small**: Easier to understand and test
+4. **Extract Reusable Logic**: Create custom hooks for shared logic
+5. **Props Validation**: Use PropTypes or TypeScript
+
+\`\`\`javascript
+// Good - focused, reusable
+function Button({ text, onClick, variant = "primary" }) {
+  return (
+    <button 
+      className={\`btn btn-\${variant}\`}
+      onClick={onClick}
+    >
+      {text}
+    </button>
+  );
+}
+
+// Bad - does too much
+function BadComponent() {
+  // 200 lines of code doing multiple things
+  // Hard to understand, test, and reuse
+}
+\`\`\`
+
+## Common Mistakes
+
+1. **Forgetting keys in lists**: Causes React warnings and bugs
+2. **Mutating props**: Props are read-only
+3. **Putting objects in JSX**: Must use object properties
+4. **Missing return statement**: Component must return JSX
+5. **Using class instead of className**: Common typo
+
+\`\`\`javascript
+// Common errors
+function BadComponent({ items }) {
+  // Missing key
+  return items.map(item => <div>{item}</div>);
+  
+  // Mutating props
+  items.push("new"); // Don't do this!
+  
+  // Wrong attribute name
+  return <div class="container">Content</div>; // Should be className
+}
+\`\`\`
+
+Components and JSX are the foundation of React. Master these concepts, and you'll be able to build complex, interactive user interfaces. Practice creating small, focused components and composing them into larger applications.`,
 
   '4-props-composition': `Props pass data from parent to child. Composition means building UIs by nesting components and sometimes passing children or render props. Avoid prop drilling with context or state management when needed.
 

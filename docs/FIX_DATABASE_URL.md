@@ -10,9 +10,14 @@ This means your `DATABASE_URL` hostname is **incomplete**.
 
 ## 🔍 Current Issue
 
-Your `DATABASE_URL` in `backend/.env` is:
+Your `DATABASE_URL` in `backend/.env` should follow this format:
 ```
-postgresql://codeverse_c42e_user:8kn05XxMExInxTOBRIb3cLc6TbesNSzg@dpg-d61ioavgi27c73c9o5b0-a/codeverse_c42e
+postgresql://username:password@host:port/database
+```
+
+Example format (with placeholders):
+```
+postgresql://codeverse_c42e_user:YOUR_PASSWORD_HERE@dpg-d61ioavgi27c73c9o5b0-a.singapore-postgres.render.com:5432/codeverse_c42e
 ```
 
 The hostname `dpg-d61ioavgi27c73c9o5b0-a` is missing the `.singapore-postgres.render.com` suffix.
@@ -29,7 +34,7 @@ The hostname `dpg-d61ioavgi27c73c9o5b0-a` is missing the `.singapore-postgres.re
 1. Click **"Connect"** button
 2. You'll see **"Internal Database URL"** - it should look like:
    ```
-   postgresql://codeverse_c42e_user:8kn05XxMExInxTOBRIb3cLc6TbesNSzg@dpg-d61ioavgi27c73c9o5b0-a.singapore-postgres.render.com:5432/codeverse_c42e
+   postgresql://codeverse_c42e_user:YOUR_PASSWORD_HERE@dpg-d61ioavgi27c73c9o5b0-a.singapore-postgres.render.com:5432/codeverse_c42e
    ```
    
    **Notice:** It includes `.singapore-postgres.render.com:5432` (or similar region)
@@ -39,7 +44,7 @@ The hostname `dpg-d61ioavgi27c73c9o5b0-a` is missing the `.singapore-postgres.re
 Replace the `DATABASE_URL` line in `backend/.env` with the **complete** connection string:
 
 ```env
-DATABASE_URL=postgresql://codeverse_c42e_user:8kn05XxMExInxTOBRIb3cLc6TbesNSzg@dpg-d61ioavgi27c73c9o5b0-a.singapore-postgres.render.com:5432/codeverse_c42e
+DATABASE_URL=postgresql://codeverse_c42e_user:YOUR_PASSWORD_HERE@dpg-d61ioavgi27c73c9o5b0-a.singapore-postgres.render.com:5432/codeverse_c42e
 ```
 
 **Important:** 

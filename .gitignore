@@ -31,9 +31,13 @@ yarn-error.*
 *.pem
 
 # local env files (keep .env.example; do not commit .env)
+# NEVER COMMIT .env FILES - THEY CONTAIN SECRETS!
 .env
 .env*.local
 .env.production
+backend/.env
+backend/.env.local
+backend/.env.production
 
 # typescript
 *.tsbuildinfo

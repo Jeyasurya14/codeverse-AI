@@ -2,39 +2,62 @@
  * CodeVerse design system — typography, color, spacing, elevation
  */
 export const COLORS = {
-  primary: '#2563EB',
-  primaryDark: '#1D4ED8',
-  secondary: '#EAB308',
-  secondaryDark: '#CA8A04',
-  secondaryMuted: 'rgba(234, 179, 8, 0.15)',
+  // Primary brand colors - refined blue
+  primary: '#3B82F6',
+  primaryDark: '#2563EB',
+  primaryLight: '#60A5FA',
+  primaryMuted: 'rgba(59, 130, 246, 0.1)',
+  
+  // Secondary accent - refined gold/yellow
+  secondary: '#F59E0B',
+  secondaryDark: '#D97706',
+  secondaryLight: '#FBBF24',
+  secondaryMuted: 'rgba(245, 158, 11, 0.15)',
 
-  background: '#0B1120',
-  backgroundCard: '#151D2E',
-  backgroundElevated: '#1E293B',
-  backgroundAuth: '#0B1120',
+  // Background hierarchy - subtle depth
+  background: '#0F172A',
+  backgroundCard: '#1E293B',
+  backgroundElevated: '#334155',
+  backgroundAuth: '#0F172A',
+  backgroundOverlay: 'rgba(15, 23, 42, 0.8)',
 
-  gradientAccent: ['#2563EB', '#EAB308'] as [string, string],
+  // Gradient accents - professional gradients
+  gradientAccent: ['#3B82F6', '#8B5CF6'] as [string, string],
+  gradientPrimary: ['#3B82F6', '#2563EB'] as [string, string],
+  gradientSecondary: ['#F59E0B', '#D97706'] as [string, string],
 
-  textPrimary: '#F1F5F9',
-  textSecondary: '#94A3B8',
-  textMuted: '#64748B',
+  // Text hierarchy - improved contrast
+  textPrimary: '#F8FAFC',
+  textSecondary: '#CBD5E1',
+  textMuted: '#94A3B8',
+  textDisabled: '#64748B',
 
-  border: 'rgba(148, 163, 184, 0.12)',
-  borderFocus: 'rgba(37, 99, 235, 0.5)',
+  // Borders - subtle and refined
+  border: 'rgba(148, 163, 184, 0.08)',
+  borderLight: 'rgba(148, 163, 184, 0.04)',
+  borderFocus: 'rgba(59, 130, 246, 0.4)',
+  borderHover: 'rgba(148, 163, 184, 0.16)',
 
-  /** Code block in articles */
+  // Code block styling
   codeBackground: '#0F172A',
-  codeBorder: 'rgba(59, 130, 246, 0.2)',
+  codeBorder: 'rgba(59, 130, 246, 0.15)',
   codeText: '#E2E8F0',
 
+  // Accent colors
   neonBlue: '#3B82F6',
-  neonYellow: '#FACC15',
-  glowBlue: 'rgba(59, 130, 246, 0.35)',
-  glowYellow: 'rgba(234, 179, 8, 0.3)',
+  neonYellow: '#FBBF24',
+  glowBlue: 'rgba(59, 130, 246, 0.25)',
+  glowYellow: 'rgba(245, 158, 11, 0.25)',
 
-  success: '#22C55E',
+  // Status colors
+  success: '#10B981',
+  successMuted: 'rgba(16, 185, 129, 0.15)',
   error: '#EF4444',
+  errorMuted: 'rgba(239, 68, 68, 0.15)',
   warning: '#F59E0B',
+  warningMuted: 'rgba(245, 158, 11, 0.15)',
+  info: '#3B82F6',
+  infoMuted: 'rgba(59, 130, 246, 0.15)',
 } as const;
 
 export const SPACING = {
@@ -83,26 +106,49 @@ export const FONTS = {
   readingMedium: 'DMSans_500Medium',
 } as const;
 
-/** Subtle elevation for cards */
+/** Professional shadows with depth */
 export const SHADOWS = {
   card: {
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  cardElevated: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    elevation: 6,
   },
   button: {
-    shadowColor: '#2563EB',
+    shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
     elevation: 4,
+  },
+  buttonPressed: {
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  glow: {
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 0,
   },
 } as const;
 
 export const AI_TOKENS = {
-  FREE_LIMIT: 300,
+  FREE_LIMIT: 300, // Match backend constant
+  TOKENS_PER_MESSAGE: 10, // Fixed cost per AI message
+  MIN_TOKENS_TO_SEND: 10, // Minimum tokens required to send a message
   RECHARGE_PACKS: [
     { id: 'starter', tokens: 500, price: 0.99, label: 'Starter', popular: false },
     { id: 'learner', tokens: 1500, price: 2.99, label: 'Learner', popular: true },

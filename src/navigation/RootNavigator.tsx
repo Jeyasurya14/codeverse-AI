@@ -6,6 +6,7 @@ import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-nativ
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '../context/AuthContext';
+import type { User } from '../types';
 import { COLORS, FONTS, SPACING } from '../constants/theme';
 
 // Support both exp:// (Expo Go) and codeverse-ai:// (standalone) deep links

@@ -82,20 +82,80 @@ export async function api<T>(
           };
           const retryRes = await fetchWithTimeout(url, { ...options, headers: retryHeaders });
           if (!retryRes.ok) {
-            const err = await retryRes.json().catch(() => ({}));
+            let err: any = {};
+            try {
+              const errorText = await retryRes.text();
+              if (errorText) {
+                err = JSON.parse(errorText);
+              }
+            } catch {
+              // Ignore parse errors
+            }
             const msg = (err as { message?: string }).message ?? retryRes.statusText;
             throw new Error(msg || 'Request failed.');
           }
-          return retryRes.json();
+          
+          // Parse JSON response safely
+          try {
+            const text = await retryRes.text();
+            if (!text) {
+              throw new Error('Empty response from server');
+            }
+            return JSON.parse(text);
+          } catch (parseError) {
+            throw new Error('Invalid response from server. Please try again.');
+          }
         } catch (refreshErr) {
           // Refresh failed, throw original 401 error
-          const err = await res.json().catch(() => ({}));
+          let err: any = {};
+          try {
+            const errorText = await res.text();
+            if (errorText) {
+              err = JSON.parse(errorText);
+            }
+          } catch {
+            // Ignore parse errors
+          }
           const msg = (err as { message?: string }).message ?? res.statusText;
           throw new Error(msg || 'Authentication failed. Please sign in again.');
         }
       }
-      const err = await res.json().catch(() => ({}));
-      const msg = (err as { message?: string }).message ?? res.statusText;
+      let err: any = {};
+      let msg = res.statusText;
+      
+      try {
+        const errorText = await res.text();
+        if (errorText) {
+          err = JSON.parse(errorText);
+          msg = err.message || res.statusText;
+        }
+      } catch (parseError) {
+        // If JSON parsing fails, use status text
+        msg = res.statusText || 'Request failed';
+      }
+      
+      // Handle 403 conversation limit errors
+      if (res.status === 403) {
+        const errorData = err as { message?: string; error?: string; limit?: number; current?: number; plan?: string };
+        throw new Error(JSON.stringify({
+          message: errorData.message || 'Conversation limit reached',
+          error: errorData.error || 'CONVERSATION_LIMIT_REACHED',
+          limit: errorData.limit,
+          current: errorData.current,
+          plan: errorData.plan,
+        }));
+      }
+      
+      // Handle 404 errors (expected when not authenticated or resource doesn't exist)
+      if (res.status === 404) {
+        throw new Error('Not found');
+      }
+      
+      // Handle 401 errors (authentication required)
+      if (res.status === 401) {
+        throw new Error('Authentication required');
+      }
+      
       throw new Error(msg || 'Request failed.');
     }
     return res.json();
@@ -126,7 +186,13 @@ export async function exchangeOAuthCode(
 
 // Email/Password Auth
 export async function registerEmail(email: string, password: string, name?: string) {
-  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'email' }; accessToken: string; refreshToken: string; expiresAt?: string }>(
+  return api<{ 
+    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; emailVerified?: boolean }; 
+    accessToken: string; 
+    refreshToken: string; 
+    expiresAt?: string;
+    tokenUsage?: { freeUsed: number; purchasedTotal: number; purchasedUsed: number };
+  }>(
     '/auth/register',
     {
       method: 'POST',
@@ -136,7 +202,14 @@ export async function registerEmail(email: string, password: string, name?: stri
 }
 
 export async function loginEmail(email: string, password: string, rememberMe = false, mfaCode?: string) {
-  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean }; accessToken: string; refreshToken: string; expiresAt?: string; requiresMfa?: boolean }>(
+  return api<{ 
+    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean }; 
+    accessToken: string; 
+    refreshToken: string; 
+    expiresAt?: string; 
+    requiresMfa?: boolean;
+    tokenUsage?: { freeUsed: number; purchasedTotal: number; purchasedUsed: number };
+  }>(
     '/auth/login',
     {
       method: 'POST',
@@ -176,6 +249,105 @@ export async function logout(refreshToken?: string) {
   );
 }
 
+// Token Usage Management
+export async function getTokenUsage() {
+  return api<{ freeUsed: number; purchasedTotal: number; purchasedUsed: number }>(
+    '/tokens/usage',
+    {
+      method: 'GET',
+    }
+  );
+}
+
+export async function syncTokenUsage(freeUsed: number, purchasedTotal: number, purchasedUsed: number) {
+  return api<{ message: string }>(
+    '/tokens/sync',
+    {
+      method: 'POST',
+      body: JSON.stringify({ freeUsed, purchasedTotal, purchasedUsed }),
+    }
+  );
+}
+
+// Conversation Management
+export type Conversation = {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ConversationMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  tokensUsed: number;
+  createdAt: string;
+};
+
+export async function getConversations() {
+  return api<{ conversations: Conversation[] }>(
+    '/ai/conversations',
+    {
+      method: 'GET',
+    }
+  );
+}
+
+export async function createConversation(title?: string) {
+  try {
+    return await api<{ conversation: Conversation }>(
+      '/ai/conversations',
+      {
+        method: 'POST',
+        body: JSON.stringify({ title }),
+      }
+    );
+  } catch (e: any) {
+    // Re-throw with proper error format for conversation limits
+    if (e.message && typeof e.message === 'string') {
+      try {
+        const errorData = JSON.parse(e.message);
+        if (errorData.error === 'CONVERSATION_LIMIT_REACHED') {
+          throw new Error(JSON.stringify(errorData));
+        }
+      } catch {
+        // Not JSON, continue with original error
+      }
+    }
+    throw e;
+  }
+}
+
+export async function getConversationMessages(conversationId: string) {
+  return api<{ messages: ConversationMessage[] }>(
+    `/ai/conversations/${conversationId}/messages`,
+    {
+      method: 'GET',
+    }
+  );
+}
+
+export async function updateConversationTitle(conversationId: string, title: string) {
+  return api<{ message: string }>(
+    `/ai/conversations/${conversationId}`,
+    {
+      method: 'PUT',
+      body: JSON.stringify({ title }),
+    }
+  );
+}
+
+export async function deleteConversation(conversationId: string) {
+  return api<{ message: string }>(
+    `/ai/conversations/${conversationId}`,
+    {
+      method: 'DELETE',
+    }
+  );
+}
+
 // Languages & articles (replace with real endpoints)
 export async function getLanguages() {
   // return api<ProgrammingLanguage[]>('/languages');
@@ -189,14 +361,22 @@ export async function getArticles(languageId: string) {
 
 // AI mentor – backend must validate token balance and deduct usage server-side.
 // Contract: POST /ai/chat
-//   Body: { message: string, context?: string }
-//   Response: { reply: string, tokensUsed: number }
+//   Body: { message: string, context?: string, conversationId?: string }
+//   Response: { reply: string, tokensUsed: number, conversationId?: string }
 //   Errors: 402 when insufficient tokens, 4xx/5xx for other failures.
-export type SendAIMessageResult = { reply: string; tokensUsed: number };
+export type SendAIMessageResult = { 
+  reply: string; 
+  tokensUsed: number;
+  conversationId?: string;
+};
 
 const AI_TIMEOUT_MS = 60000;
 
-export async function sendAIMessage(message: string, context?: string): Promise<SendAIMessageResult> {
+export async function sendAIMessage(
+  message: string, 
+  context?: string, 
+  conversationId?: string
+): Promise<SendAIMessageResult> {
   const baseUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (!baseUrl) {
     await new Promise((r) => setTimeout(r, 600));
@@ -220,23 +400,61 @@ export async function sendAIMessage(message: string, context?: string): Promise<
           Authorization: `Bearer ${authTokens.accessToken}`,
         }),
       },
-      body: JSON.stringify({ message: String(message).slice(0, 16000), context: context ? String(context).slice(0, 2000) : undefined }),
+      body: JSON.stringify({ 
+        message: String(message).slice(0, 16000), 
+        context: context ? String(context).slice(0, 2000) : undefined,
+        conversationId: conversationId || undefined,
+      }),
     });
     clearTimeout(timeout);
 
-    const data = await res.json().catch(() => ({}));
+    let data: any = {};
+    try {
+      const text = await res.text();
+      if (text) {
+        data = JSON.parse(text);
+      }
+    } catch (parseError) {
+      // If JSON parsing fails, use empty object
+      data = {};
+    }
 
     if (!res.ok) {
       const msg = (data as { message?: string }).message ?? res.statusText;
       if (res.status === 402) {
-        throw new Error('Insufficient tokens. Please recharge to continue.');
+        // Insufficient tokens - include details if available
+        const tokensRequired = (data as { tokensRequired?: number }).tokensRequired ?? 10;
+        const tokensAvailable = (data as { tokensAvailable?: number }).tokensAvailable ?? 0;
+        throw new Error(`Insufficient tokens. You need ${tokensRequired} tokens but only have ${tokensAvailable} available. Please recharge to continue.`);
+      }
+      if (res.status === 403) {
+        // Conversation limit reached
+        const errorData = data as { message?: string; error?: string; limit?: number; current?: number; plan?: string };
+        throw new Error(JSON.stringify({
+          message: errorData.message || 'Conversation limit reached',
+          error: errorData.error || 'CONVERSATION_LIMIT_REACHED',
+          limit: errorData.limit,
+          current: errorData.current,
+          plan: errorData.plan,
+        }));
       }
       throw new Error(msg || 'AI request failed.');
     }
 
+    // Validate response data
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid response from server');
+    }
+
     const reply = (data as { reply?: string }).reply ?? '';
-    const tokensUsed = Math.max(0, Number((data as { tokensUsed?: number }).tokensUsed) || 50);
-    return { reply, tokensUsed };
+    if (!reply) {
+      throw new Error('Empty response from AI. Please try again.');
+    }
+    
+    const tokensUsed = Math.max(0, Number((data as { tokensUsed?: number }).tokensUsed) || 10);
+    const conversationId = (data as { conversationId?: string }).conversationId;
+    
+    return { reply, tokensUsed, conversationId };
   } catch (e) {
     clearTimeout(timeout);
     if (e instanceof Error) {

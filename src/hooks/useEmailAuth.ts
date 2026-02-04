@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import { useTokens } from '../context/TokenContext';
 import { registerEmail, loginEmail, requestMagicLink } from '../services/api';
 import type { AuthTokens } from '../types';
 
 export function useEmailAuth() {
   const { signIn } = useAuth();
+  const { refresh: refreshTokens } = useTokens();
   const [isLoading, setIsLoading] = useState(false);
 
   const register = async (email: string, password: string, name?: string) => {
@@ -17,6 +19,12 @@ export function useEmailAuth() {
         refreshToken: result.refreshToken,
         expiresAt: result.expiresAt,
       }, false);
+      
+      // Sync token usage from backend response
+      if (result.tokenUsage) {
+        await refreshTokens();
+      }
+      
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Registration failed. Please try again.';
@@ -42,6 +50,12 @@ export function useEmailAuth() {
         refreshToken: result.refreshToken,
         expiresAt: result.expiresAt,
       }, rememberMe);
+      
+      // Sync token usage from backend response
+      if (result.tokenUsage) {
+        await refreshTokens();
+      }
+      
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';

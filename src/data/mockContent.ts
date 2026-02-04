@@ -2,10 +2,155 @@ import { ProgrammingLanguage, Article } from '../types';
 import { ARTICLE_CONTENT } from './articleContent';
 
 export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
-  { id: '1', name: 'JavaScript', slug: 'javascript', icon: '🟨', description: 'Web and Node.js', topicCount: 14 },
-  { id: '2', name: 'Python', slug: 'python', icon: '🐍', description: 'General purpose & data', topicCount: 14 },
-  { id: '3', name: 'TypeScript', slug: 'typescript', icon: '🔷', description: 'Typed JavaScript', topicCount: 10 },
-  { id: '4', name: 'React', slug: 'react', icon: '⚛️', description: 'UI library', topicCount: 8 },
+  // Programming Languages
+  { 
+    id: '1', 
+    name: 'JavaScript', 
+    slug: 'javascript', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg', 
+    description: 'Web and Node.js', 
+    topicCount: 14, 
+    category: 'language' 
+  },
+  { 
+    id: '2', 
+    name: 'Python', 
+    slug: 'python', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg', 
+    description: 'General purpose & data', 
+    topicCount: 14, 
+    category: 'language' 
+  },
+  { 
+    id: '3', 
+    name: 'TypeScript', 
+    slug: 'typescript', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg', 
+    description: 'Typed JavaScript', 
+    topicCount: 10, 
+    category: 'language' 
+  },
+  { 
+    id: '5', 
+    name: 'Java', 
+    slug: 'java', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg', 
+    description: 'Enterprise applications', 
+    topicCount: 12, 
+    category: 'language' 
+  },
+  { 
+    id: '6', 
+    name: 'C++', 
+    slug: 'cpp', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg', 
+    description: 'System programming', 
+    topicCount: 10, 
+    category: 'language' 
+  },
+  { 
+    id: '7', 
+    name: 'Go', 
+    slug: 'go', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/go/go-original.svg', 
+    description: 'Concurrent programming', 
+    topicCount: 8, 
+    category: 'language' 
+  },
+  
+  // Frameworks
+  { 
+    id: '4', 
+    name: 'React', 
+    slug: 'react', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg', 
+    description: 'UI library', 
+    topicCount: 8, 
+    category: 'framework' 
+  },
+  { 
+    id: '8', 
+    name: 'Vue.js', 
+    slug: 'vue', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vuejs/vuejs-original.svg', 
+    description: 'Progressive framework', 
+    topicCount: 7, 
+    category: 'framework' 
+  },
+  { 
+    id: '9', 
+    name: 'Angular', 
+    slug: 'angular', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/angularjs/angularjs-original.svg', 
+    description: 'Full-featured framework', 
+    topicCount: 9, 
+    category: 'framework' 
+  },
+  { 
+    id: '10', 
+    name: 'Next.js', 
+    slug: 'nextjs', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nextjs/nextjs-original.svg', 
+    description: 'React framework', 
+    topicCount: 6, 
+    category: 'framework' 
+  },
+  { 
+    id: '11', 
+    name: 'Express.js', 
+    slug: 'express', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/express/express-original.svg', 
+    description: 'Node.js framework', 
+    topicCount: 5, 
+    category: 'framework' 
+  },
+  { 
+    id: '12', 
+    name: 'Django', 
+    slug: 'django', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/django/django-plain.svg', 
+    description: 'Python web framework', 
+    topicCount: 7, 
+    category: 'framework' 
+  },
+  
+  // AI/ML
+  { 
+    id: '13', 
+    name: 'TensorFlow', 
+    slug: 'tensorflow', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tensorflow/tensorflow-original.svg', 
+    description: 'Machine learning', 
+    topicCount: 8, 
+    category: 'aiml' 
+  },
+  { 
+    id: '14', 
+    name: 'PyTorch', 
+    slug: 'pytorch', 
+    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/pytorch/pytorch-original.svg', 
+    description: 'Deep learning', 
+    topicCount: 7, 
+    category: 'aiml' 
+  },
+  { 
+    id: '15', 
+    name: 'Scikit-learn', 
+    slug: 'scikit-learn', 
+    icon: 'https://upload.wikimedia.org/wikipedia/commons/0/05/Scikit_learn_logo_small.svg', 
+    description: 'ML algorithms', 
+    topicCount: 6, 
+    category: 'aiml' 
+  },
+  { 
+    id: '16', 
+    name: 'OpenAI API', 
+    slug: 'openai', 
+    icon: 'https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg', 
+    description: 'AI integration', 
+    topicCount: 5, 
+    category: 'aiml' 
+  },
 ];
 
 const fallbackContent = `Content for this article is being prepared. Check back soon!

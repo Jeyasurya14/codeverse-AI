@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_reset_token VARCHAR(255),
   password_reset_expires_at TIMESTAMPTZ,
   provider VARCHAR(50) NOT NULL DEFAULT 'email' CHECK (provider = 'email'),
+  subscription_plan VARCHAR(50) DEFAULT 'free' CHECK (subscription_plan IN ('free', 'starter', 'learner', 'pro', 'unlimited')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -38,13 +39,14 @@ CREATE TABLE IF NOT EXISTS token_usage (
   UNIQUE(user_id)
 );
 
--- Programming languages
+-- Programming languages, frameworks, and AI/ML
 CREATE TABLE IF NOT EXISTS programming_languages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(100) NOT NULL,
   slug VARCHAR(100) NOT NULL UNIQUE,
   icon VARCHAR(10),
   description TEXT,
+  category VARCHAR(20) NOT NULL DEFAULT 'language' CHECK (category IN ('language', 'framework', 'aiml')),
   sort_order INT DEFAULT 0,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -165,3 +167,30 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 CREATE INDEX idx_password_reset_token ON password_reset_tokens(token);
 CREATE INDEX idx_password_reset_user ON password_reset_tokens(user_id);
 CREATE INDEX idx_password_reset_expires ON password_reset_tokens(expires_at);
+
+-- AI Conversations (ChatGPT-like conversation history)
+CREATE TABLE IF NOT EXISTS ai_conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title VARCHAR(255), -- Auto-generated from first message or user-set
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_ai_conversations_user ON ai_conversations(user_id);
+CREATE INDEX idx_ai_conversations_updated ON ai_conversations(updated_at DESC);
+-- Composite index for efficient user + updated_at queries (for conversation listing)
+CREATE INDEX idx_ai_conversations_user_updated ON ai_conversations(user_id, updated_at DESC);
+
+-- AI Messages (messages within conversations)
+CREATE TABLE IF NOT EXISTS ai_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES ai_conversations(id) ON DELETE CASCADE,
+  role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  tokens_used INT DEFAULT 0, -- Tokens consumed for this message
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_ai_messages_conversation ON ai_messages(conversation_id);
+CREATE INDEX idx_ai_messages_created ON ai_messages(created_at);
