@@ -33,25 +33,41 @@ export function AuthDeepLinkHandler() {
       fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:22',message:'handleUrl called',data:{url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
       if (!url) return;
-      const q = url.indexOf('?');
-      if (q === -1) {
+      
+      let code: string | null = null;
+      let provider: 'google' | 'github' | null = null;
+      
+      // Check for path-based format: exp://.../auth/google/CODE or exp://.../auth/github/CODE (Android-safe, avoids query param stripping)
+      const pathMatch = url.match(/\/auth\/(google|github)\/([^/?&#]+)/);
+      if (pathMatch) {
+        provider = pathMatch[1] as 'google' | 'github';
+        code = decodeURIComponent(pathMatch[2]);
         // #region agent log
-        console.log('[DEBUG AuthDeepLinkHandler] URL has no query params');
-        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:26',message:'URL has no query params',data:{url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        console.log('[DEBUG AuthDeepLinkHandler] Found path-based format:', { provider, codeLength: code?.length });
+        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:38',message:'Path-based format detected',data:{provider,codeLength:code?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
-        return;
+      } else {
+        // Fallback to query param format: exp://.../auth?code=...&provider=... (for standalone builds)
+        const q = url.indexOf('?');
+        if (q === -1) {
+          // #region agent log
+          console.log('[DEBUG AuthDeepLinkHandler] URL has no query params and no path format');
+          fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:45',message:'URL has no query params and no path format',data:{url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
+          return;
+        }
+        let query = url.slice(q + 1);
+        const h = query.indexOf('#');
+        if (h !== -1) query = query.slice(0, h);
+        const params = Object.fromEntries(new URLSearchParams(query));
+        code = params.code || null;
+        provider = params.provider === 'github' ? 'github' : params.provider === 'google' ? 'google' : null;
       }
-      let query = url.slice(q + 1);
-      const h = query.indexOf('#');
-      if (h !== -1) query = query.slice(0, h);
-      const params = Object.fromEntries(new URLSearchParams(query));
-      const code = params.code;
-      const provider = params.provider === 'github' ? 'github' : params.provider === 'google' ? 'google' : null;
       // Check if URL contains auth path (works for both exp://.../auth and codeverse-ai://auth)
       const hasAuthPath = url.includes('/auth') || url.includes('auth?') || url.includes('auth&') || url.includes('codeverse-ai');
       // #region agent log
       console.log('[DEBUG AuthDeepLinkHandler] Parsed params:', { code: !!code, provider, hasAuthPath, url });
-      fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:32',message:'Parsed URL params',data:{hasCode:!!code,provider,hasAuthPath,url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:55',message:'Parsed URL params',data:{hasCode:!!code,provider,hasAuthPath,url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
       // #endregion
       if (!code || !provider || !hasAuthPath) {
         // #region agent log

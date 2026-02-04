@@ -149,6 +149,7 @@ function sendRedirectToApp(res, target) {
 /**
  * GET /auth/callback/google?code=...&state=...
  * Redirects browser to app (or Expo Go exp:// URL from state) so the app can exchange the code.
+ * For Expo Go, encodes code in path to avoid Android browser stripping query params.
  */
 app.get('/auth/callback/google', (req, res) => {
   const code = req.query.code;
@@ -157,9 +158,23 @@ app.get('/auth/callback/google', (req, res) => {
     return res.status(400).send('Missing code');
   }
   const redirectBack = getRedirectBack(state);
-  const params = new URLSearchParams({ code, provider: 'google' });
-  if (state && typeof state === 'string') params.set('state', state);
-  const target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
+  
+  // For Expo Go (exp://), encode code in path to avoid Android browser stripping query params
+  let target;
+  if (redirectBack.startsWith('exp://')) {
+    // Use path format: exp://.../auth/google/CODE_ENCODED
+    const encodedCode = encodeURIComponent(code);
+    target = `${redirectBack}/google/${encodedCode}`;
+    if (state && typeof state === 'string') {
+      target += `?state=${encodeURIComponent(state)}`;
+    }
+  } else {
+    // For standalone (codeverse-ai://), use query params
+    const params = new URLSearchParams({ code, provider: 'google' });
+    if (state && typeof state === 'string') params.set('state', state);
+    target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
+  }
+  
   return sendRedirectToApp(res, target);
 });
 
@@ -174,9 +189,23 @@ app.get('/auth/callback/github', (req, res) => {
     return res.status(400).send('Missing code');
   }
   const redirectBack = getRedirectBack(state);
-  const params = new URLSearchParams({ code, provider: 'github' });
-  if (state && typeof state === 'string') params.set('state', state);
-  const target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
+  
+  // For Expo Go (exp://), encode code in path to avoid Android browser stripping query params
+  let target;
+  if (redirectBack.startsWith('exp://')) {
+    // Use path format: exp://.../auth/github/CODE_ENCODED
+    const encodedCode = encodeURIComponent(code);
+    target = `${redirectBack}/github/${encodedCode}`;
+    if (state && typeof state === 'string') {
+      target += `?state=${encodeURIComponent(state)}`;
+    }
+  } else {
+    // For standalone (codeverse-ai://), use query params
+    const params = new URLSearchParams({ code, provider: 'github' });
+    if (state && typeof state === 'string') params.set('state', state);
+    target = redirectBack.includes('?') ? `${redirectBack}&${params}` : `${redirectBack}?${params}`;
+  }
+  
   return sendRedirectToApp(res, target);
 });
 
