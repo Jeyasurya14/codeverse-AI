@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Linking, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
@@ -15,11 +15,22 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
  */
 export function AuthDeepLinkHandler() {
   const { signIn, completeOnboarding } = useAuth();
+  const processingRef = React.useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!BASE_URL) return;
 
     const handleUrl = async (url: string | null) => {
+      // Prevent processing the same URL multiple times
+      if (!url || processingRef.current.has(url)) {
+        return;
+      }
+      processingRef.current.add(url);
+      
+      // Clean up after 5 seconds
+      setTimeout(() => {
+        processingRef.current.delete(url);
+      }, 5000);
       // Skip if URL is just the base Expo URL without path/query (not our auth callback)
       if (url && !url.includes('?') && !url.includes('/auth') && !url.includes('codeverse-ai')) {
         // #region agent log
@@ -101,11 +112,16 @@ export function AuthDeepLinkHandler() {
           };
           await signIn(appUser, tokens);
           // Onboarding is now completed automatically in signIn
+          
+          // Force close browser
           try {
             await WebBrowser.dismissBrowser();
-          } catch {
-            // dismissBrowser not available on all platforms
+          } catch (e) {
+            if (__DEV__) console.log('WebBrowser.dismissBrowser failed:', e);
           }
+          
+          // Clear processing flag
+          if (url) processingRef.current.delete(url);
         } catch (e) {
           console.error('Failed to decode token:', e);
         }
@@ -171,11 +187,16 @@ export function AuthDeepLinkHandler() {
           expiresAt,
         });
         // Onboarding is now completed automatically in signIn
+        
+        // Force close browser immediately
         try {
           await WebBrowser.dismissBrowser();
-        } catch {
-          // dismissBrowser not available on all platforms (e.g. Android)
+        } catch (e) {
+          if (__DEV__) console.log('WebBrowser.dismissBrowser failed:', e);
         }
+        
+        // Clear processing flag so navigation can proceed
+        processingRef.current.delete(url);
       } catch (e) {
         // #region agent log
         console.log('[DEBUG AuthDeepLinkHandler] Error in handleOAuthCode:', e);

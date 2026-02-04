@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import React, { useEffect, useRef } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
@@ -115,6 +115,30 @@ function MainTabs() {
 
 export function RootNavigator() {
   const { user, isLoading, isOnboardingDone } = useAuth();
+  const navigationRef = useRef<any>(null);
+  const prevUserRef = useRef<User | null>(null);
+  const prevOnboardingRef = useRef<boolean>(false);
+
+  // Reset navigation when user logs in and onboarding is complete
+  useEffect(() => {
+    const userChanged = prevUserRef.current === null && user !== null;
+    const onboardingCompleted = !prevOnboardingRef.current && isOnboardingDone;
+    
+    if (userChanged && isOnboardingDone && navigationRef.current) {
+      // User just logged in and onboarding is done - ensure we're on Main screen
+      try {
+        navigationRef.current.reset({
+          index: 0,
+          routes: [{ name: 'Main' }],
+        });
+      } catch (e) {
+        if (__DEV__) console.log('Navigation reset:', e);
+      }
+    }
+    
+    prevUserRef.current = user;
+    prevOnboardingRef.current = isOnboardingDone;
+  }, [user, isOnboardingDone]);
 
   if (isLoading) {
     return (
@@ -126,7 +150,7 @@ export function RootNavigator() {
   }
 
   return (
-    <NavigationContainer linking={linking}>
+    <NavigationContainer ref={navigationRef} linking={linking}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <>

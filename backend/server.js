@@ -304,21 +304,29 @@ function getRedirectBack(state) {
 function sendRedirectToApp(res, target) {
   const escaped = target.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   const scriptUrl = JSON.stringify(target);
-  // Parse code from target URL to include in page (fallback if deep link fails)
-  const urlMatch = target.match(/[?&]code=([^&]+)/);
-  const codeParam = urlMatch ? urlMatch[1] : '';
-  const providerMatch = target.match(/[?&]provider=([^&]+)/);
-  const providerParam = providerMatch ? providerMatch[1] : '';
   
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.send(
     `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<meta http-equiv="refresh" content="1;url=${escaped}">` +
-    `<title>Opening app…</title><style>body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;background:#1a1a2e;color:#eee;}a{color:#6c9eff;margin-top:1rem;padding:12px 24px;background:#6c9eff;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;display:inline-block;}</style></head><body>` +
-    `<p>Sign-in successful!</p><p>Opening app…</p><p><a href="${escaped}" style="margin-top:2rem;">Tap to Open App</a></p>` +
-    `<script>try{var u=${scriptUrl};setTimeout(function(){window.location.href=u;},500);}catch(e){console.error('Redirect failed',e);}</script>` +
-    // Store code in sessionStorage as fallback (app can read via WebView if needed)
-    (codeParam ? `<script>try{sessionStorage.setItem('oauth_code','${codeParam}');sessionStorage.setItem('oauth_provider','${providerParam}');}catch(e){}</script>` : '') +
+    `<title>Redirecting...</title>` +
+    `<style>body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;background:#1a1a2e;color:#eee;}</style>` +
+    `</head><body>` +
+    `<p>Sign-in successful!</p><p>Redirecting to app...</p>` +
+    `<script>` +
+    `(function(){` +
+    `  var u=${scriptUrl};` +
+    `  // Immediate redirect attempt` +
+    `  try{window.location.replace(u);}catch(e){` +
+    `    try{window.location.href=u;}catch(e2){` +
+    `      console.error('Redirect failed',e2);` +
+    `      document.body.innerHTML='<p>Please <a href=\"'+u+'\">tap here</a> to open the app.</p>';` +
+    `    }` +
+    `  }` +
+    `  // Fallback: try again after short delay` +
+    `  setTimeout(function(){try{window.location.replace(u);}catch(e){}},100);` +
+    `  setTimeout(function(){try{window.location.replace(u);}catch(e){}},500);` +
+    `})();` +
+    `</script>` +
     `</body></html>`
   );
 }
