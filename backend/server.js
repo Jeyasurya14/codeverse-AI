@@ -300,35 +300,11 @@ function getRedirectBack(state) {
   return APP_AUTH_SCHEME;
 }
 
-/** Send HTML that redirects to the app immediately so the app opens and user lands on home. */
+/** Send instant redirect to app - no visible page, immediate redirect. */
 function sendRedirectToApp(res, target) {
-  const escaped = target.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-  const scriptUrl = JSON.stringify(target);
-  
-  res.set('Content-Type', 'text/html; charset=utf-8');
-  res.send(
-    `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-    `<title>Redirecting...</title>` +
-    `<style>body{font-family:system-ui;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px;text-align:center;background:#1a1a2e;color:#eee;}</style>` +
-    `</head><body>` +
-    `<p>Sign-in successful!</p><p>Redirecting to app...</p>` +
-    `<script>` +
-    `(function(){` +
-    `  var u=${scriptUrl};` +
-    `  // Immediate redirect attempt` +
-    `  try{window.location.replace(u);}catch(e){` +
-    `    try{window.location.href=u;}catch(e2){` +
-    `      console.error('Redirect failed',e2);` +
-    `      document.body.innerHTML='<p>Please <a href=\"'+u+'\">tap here</a> to open the app.</p>';` +
-    `    }` +
-    `  }` +
-    `  // Fallback: try again after short delay` +
-    `  setTimeout(function(){try{window.location.replace(u);}catch(e){}},100);` +
-    `  setTimeout(function(){try{window.location.replace(u);}catch(e){}},500);` +
-    `})();` +
-    `</script>` +
-    `</body></html>`
-  );
+  // Use HTTP 302 redirect - browsers will handle this immediately
+  // For custom schemes (exp://, codeverse-ai://), browsers will open the app directly
+  res.redirect(302, target);
 }
 
 /**

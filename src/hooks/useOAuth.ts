@@ -25,31 +25,27 @@ const isExpoGo = Constants.appOwnership === 'expo';
 
 /**
  * Redirect URI for OAuth.
- * - When BASE_URL is set: use backend callback for both Expo Go and standalone (more reliable than proxy).
- * - Otherwise: use Expo proxy (https://auth.expo.io/...) for Expo Go.
+ * - Prefer Expo proxy (https://auth.expo.io/...) to avoid showing redirect page
+ * - Fallback to backend callback only if explicitly needed
  */
 function getRedirectUri(provider?: 'google' | 'github'): string {
-  if (BASE_URL && provider) {
-    const uri = `${BASE_URL.replace(/\/$/, '')}/auth/callback/${provider}`;
-    if (__DEV__ && !hasLoggedRedirectUri) {
-      hasLoggedRedirectUri = true;
-      console.log('[OAuth] Using backend callback – add this in Google Console:', uri);
-    }
-    return uri;
-  }
+  // Prefer Expo proxy to avoid redirect page - works seamlessly with promptAsync
   const envUri = process.env.EXPO_PUBLIC_GOOGLE_REDIRECT_URI?.trim();
   if (envUri) {
     const normalized = normalizeRedirectUri(envUri);
     if (__DEV__ && !hasLoggedRedirectUri) {
       hasLoggedRedirectUri = true;
-      console.log('[OAuth] Redirect URI (from env / proxy):', normalized);
+      console.log('[OAuth] Using Expo proxy redirect URI:', normalized);
     }
     return normalized;
   }
+  
+  // Use Expo's default redirect URI (works with promptAsync, no redirect page)
   const uri = AuthSession.makeRedirectUri();
   const normalized = normalizeRedirectUri(uri);
   if (__DEV__ && !hasLoggedRedirectUri) {
     hasLoggedRedirectUri = true;
+    console.log('[OAuth] Using default Expo redirect URI:', normalized);
     console.log('[OAuth] Add this exact redirect URI in Google & GitHub Console:', normalized);
   }
   return normalized;
@@ -128,39 +124,8 @@ export function useGoogleAuth() {
     }
     if (!request) throw new Error('Auth is still loading.');
 
-    if (BASE_URL) {
-      try {
-        if (!discovery) throw new Error('Google discovery document not loaded');
-        let authUrl = await request.makeAuthUrlAsync(discovery);
-        const redirectBack = getRedirectBackUrl();
-        const stateWithRedirect = `${request.state}.${encodeURIComponent(redirectBack)}`;
-        const url = new URL(authUrl);
-        url.searchParams.set('state', stateWithRedirect);
-        authUrl = url.toString();
-        if (__DEV__) {
-          console.log('[OAuth] redirect_uri sent to Google:', url.searchParams.get('redirect_uri') ?? '');
-        }
-        const pendingData = {
-          provider: 'google',
-          codeVerifier: request.codeVerifier,
-          state: request.state,
-        };
-        // #region agent log
-        console.log('[DEBUG] Storing PENDING_OAUTH:', { provider: pendingData.provider, hasCodeVerifier: !!pendingData.codeVerifier });
-        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:143',message:'Storing PENDING_OAUTH',data:{provider:pendingData.provider,hasCodeVerifier:!!pendingData.codeVerifier},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        await AsyncStorage.setItem(STORAGE_KEYS.PENDING_OAUTH, JSON.stringify(pendingData));
-        // #region agent log
-        console.log('[DEBUG] Opening browser with authUrl, redirectBack will be:', redirectBack);
-        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:150',message:'Opening browser',data:{redirectBack},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        await WebBrowser.openBrowserAsync(authUrl);
-      } catch (e) {
-        await AsyncStorage.removeItem(STORAGE_KEYS.PENDING_OAUTH);
-        throw e instanceof Error ? e : new Error('Could not open sign-in.');
-      }
-      return;
-    }
+    // Always use promptAsync flow - it handles redirect seamlessly without showing redirect page
+    // This works with Expo proxy redirect URI and provides the best user experience
 
     // #region agent log
     console.log('[DEBUG] maybeCompleteAuthSession called before promptAsync');
@@ -321,26 +286,7 @@ export function useGithubAuth() {
     }
     if (!request) throw new Error('Auth is still loading.');
 
-    if (BASE_URL) {
-      try {
-        let authUrl = await request.makeAuthUrlAsync(GITHUB_DISCOVERY);
-        const redirectBack = getRedirectBackUrl();
-        const stateWithRedirect = `${request.state}.${encodeURIComponent(redirectBack)}`;
-        const url = new URL(authUrl);
-        url.searchParams.set('state', stateWithRedirect);
-        authUrl = url.toString();
-        await AsyncStorage.setItem(STORAGE_KEYS.PENDING_OAUTH, JSON.stringify({
-          provider: 'github',
-          codeVerifier: request.codeVerifier,
-          state: request.state,
-        }));
-        await WebBrowser.openBrowserAsync(authUrl);
-      } catch (e) {
-        await AsyncStorage.removeItem(STORAGE_KEYS.PENDING_OAUTH);
-        throw e instanceof Error ? e : new Error('Could not open sign-in.');
-      }
-      return;
-    }
+    // Always use promptAsync flow - it handles redirect seamlessly without showing redirect page
 
     WebBrowser.maybeCompleteAuthSession();
     const result = await promptAsync({

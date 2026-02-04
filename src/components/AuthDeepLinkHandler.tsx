@@ -188,7 +188,7 @@ export function AuthDeepLinkHandler() {
         });
         // Onboarding is now completed automatically in signIn
         
-        // Force close browser immediately
+        // Force close browser immediately - critical for seamless experience
         try {
           await WebBrowser.dismissBrowser();
         } catch (e) {
@@ -197,6 +197,8 @@ export function AuthDeepLinkHandler() {
         
         // Clear processing flag so navigation can proceed
         processingRef.current.delete(url);
+        
+        // Navigation will automatically update via RootNavigator when user state changes
       } catch (e) {
         // #region agent log
         console.log('[DEBUG AuthDeepLinkHandler] Error in handleOAuthCode:', e);
