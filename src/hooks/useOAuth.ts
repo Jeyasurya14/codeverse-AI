@@ -233,7 +233,7 @@ export function useGoogleAuth() {
           fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:195',message:'Code extracted from manual redirect',data:{codeLength:code.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
           // #endregion
           const codeVerifier = request.codeVerifier;
-          const { user, accessToken } = await exchangeOAuthCode('google', code, redirectUri, codeVerifier);
+          const { user, accessToken, refreshToken, expiresAt } = await exchangeOAuthCode('google', code, redirectUri, codeVerifier);
           const appUser: User = {
             id: user.id,
             email: user.email,
@@ -241,7 +241,11 @@ export function useGoogleAuth() {
             avatar: user.avatar,
             provider: 'google',
           };
-          await signIn(appUser, accessToken);
+          await signIn(appUser, {
+            accessToken,
+            refreshToken,
+            expiresAt,
+          });
           return;
         }
       } catch (e) {
@@ -265,7 +269,7 @@ export function useGoogleAuth() {
     console.log('[DEBUG] Starting code exchange', { codeLength: code?.length, hasCodeVerifier: !!codeVerifier });
     fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:149',message:'Starting code exchange',data:{codeLength:code?.length,hasCodeVerifier:!!codeVerifier},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
-    const { user, accessToken } = await exchangeOAuthCode('google', code, redirectUri, codeVerifier);
+    const { user, accessToken, refreshToken, expiresAt } = await exchangeOAuthCode('google', code, redirectUri, codeVerifier);
     // #region agent log
     console.log('[DEBUG] Code exchange completed', { userId: user?.id, hasToken: !!accessToken });
     fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:151',message:'Code exchange completed',data:{userId:user?.id,hasToken:!!accessToken},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
@@ -281,7 +285,11 @@ export function useGoogleAuth() {
     console.log('[DEBUG] Calling signIn', { userId: appUser.id });
     fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:159',message:'Calling signIn',data:{userId:appUser.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
     // #endregion
-    await signIn(appUser, accessToken);
+    await signIn(appUser, {
+      accessToken,
+      refreshToken,
+      expiresAt,
+    });
     // #region agent log
     console.log('[DEBUG] signIn completed');
     fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'useOAuth.ts:160',message:'signIn completed',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
@@ -348,7 +356,7 @@ export function useGithubAuth() {
     }
     const code = result.params.code;
     const codeVerifier = request.codeVerifier;
-    const { user, accessToken } = await exchangeOAuthCode('github', code, redirectUri, codeVerifier);
+    const { user, accessToken, refreshToken, expiresAt } = await exchangeOAuthCode('github', code, redirectUri, codeVerifier);
     const appUser: User = {
       id: user.id,
       email: user.email,
@@ -356,7 +364,11 @@ export function useGithubAuth() {
       avatar: user.avatar,
       provider: 'github',
     };
-    await signIn(appUser, accessToken);
+    await signIn(appUser, {
+      accessToken,
+      refreshToken,
+      expiresAt,
+    });
   }, [promptAsync, request, redirectUri, signIn]);
 
   return { runGithubSignIn, ready: !!request };

@@ -10,6 +10,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const OpenAI = require('openai').default;
 const jwt = require('jsonwebtoken');
+const { Pool } = require('pg');
+const bcrypt = require('bcrypt');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
@@ -36,6 +40,41 @@ if (isProduction) {
 }
 
 const secret = JWT_SECRET || 'codeverse-dev-secret-change-in-production';
+
+// Database connection pool
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: isProduction ? { rejectUnauthorized: false } : false })
+  : null;
+
+// Email transporter (nodemailer)
+let emailTransporter = null;
+if (process.env.SMTP_HOST || process.env.SENDGRID_API_KEY) {
+  if (process.env.SENDGRID_API_KEY) {
+    // SendGrid via SMTP
+    emailTransporter = nodemailer.createTransport({
+      host: 'smtp.sendgrid.net',
+      port: 587,
+      secure: false,
+      auth: {
+        user: 'apikey',
+        pass: process.env.SENDGRID_API_KEY,
+      },
+    });
+  } else if (process.env.SMTP_HOST) {
+    emailTransporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_PORT === '465',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+  }
+}
+
+const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@codeverse.ai';
+const APP_URL = process.env.APP_URL || 'https://codeverse-api-429f.onrender.com';
 
 // CORS: allowlist in production, else allow all for dev
 const corsOrigins = process.env.CORS_ORIGINS
@@ -85,6 +124,144 @@ const aiLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+// --- Database helpers ---
+
+async function findUserByEmail(email) {
+  if (!pool) return null;
+  const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+  return result.rows[0] || null;
+}
+
+async function findUserByProviderId(providerId, provider) {
+  if (!pool) return null;
+  const result = await pool.query('SELECT * FROM users WHERE provider_id = $1 AND provider = $2', [providerId, provider]);
+  return result.rows[0] || null;
+}
+
+async function createUser({ email, name, avatarUrl, provider, providerId = null, passwordHash = null }) {
+  if (!pool) {
+    // Mock for dev without DB
+    return { id: `mock-${Date.now()}`, email, name, avatar_url: avatarUrl, provider, email_verified: false };
+  }
+  const result = await pool.query(
+    `INSERT INTO users (email, name, avatar_url, provider, provider_id, password_hash, email_verified)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     ON CONFLICT (email) DO UPDATE SET
+       name = COALESCE(EXCLUDED.name, users.name),
+       avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
+       updated_at = NOW()
+     RETURNING *`,
+    [email.toLowerCase().trim(), name, avatarUrl, provider, providerId, passwordHash, provider === 'email' ? false : true]
+  );
+  return result.rows[0];
+}
+
+async function createRefreshToken(userId, expiresAt) {
+  if (!pool) return crypto.randomBytes(32).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
+  await pool.query(
+    'INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+    [userId, token, expiresAt]
+  );
+  return token;
+}
+
+async function findRefreshToken(token) {
+  if (!pool) return null;
+  const result = await pool.query(
+    'SELECT * FROM refresh_tokens WHERE token = $1 AND expires_at > NOW()',
+    [token]
+  );
+  return result.rows[0] || null;
+}
+
+async function deleteRefreshToken(token) {
+  if (!pool) return;
+  await pool.query('DELETE FROM refresh_tokens WHERE token = $1', [token]);
+}
+
+async function createMagicLinkToken(email, userId = null) {
+  if (!pool) return crypto.randomBytes(32).toString('hex');
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+  await pool.query(
+    'INSERT INTO magic_link_tokens (email, user_id, token, expires_at) VALUES ($1, $2, $3, $4)',
+    [email.toLowerCase().trim(), userId, token, expiresAt]
+  );
+  return token;
+}
+
+async function findMagicLinkToken(token) {
+  if (!pool) return null;
+  const result = await pool.query(
+    'SELECT * FROM magic_link_tokens WHERE token = $1 AND expires_at > NOW() AND used = FALSE',
+    [token]
+  );
+  return result.rows[0] || null;
+}
+
+async function markMagicLinkTokenUsed(token) {
+  if (!pool) return;
+  await pool.query('UPDATE magic_link_tokens SET used = TRUE WHERE token = $1', [token]);
+}
+
+function generateTokens(user) {
+  const accessTokenExpiresIn = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+  const accessToken = jwt.sign(
+    { sub: user.id, email: user.email, type: 'access' },
+    secret,
+    { expiresIn: accessTokenExpiresIn }
+  );
+  return { accessToken };
+}
+
+async function generateTokensWithRefresh(user, rememberMe = false) {
+  const accessTokenExpiresIn = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
+  const refreshExpiresIn = rememberMe
+    ? process.env.JWT_REFRESH_EXPIRES_IN_LONG || '30d'
+    : process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+  
+  const accessToken = jwt.sign(
+    { sub: user.id, email: user.email, type: 'access' },
+    secret,
+    { expiresIn: accessTokenExpiresIn }
+  );
+  
+  const expiresAt = new Date(Date.now() + parseExpiresIn(refreshExpiresIn));
+  const refreshToken = await createRefreshToken(user.id, expiresAt);
+  
+  return { accessToken, refreshToken, expiresAt: expiresAt.toISOString() };
+}
+
+function parseExpiresIn(str) {
+  const match = str.match(/^(\d+)([smhd])$/);
+  if (!match) return 7 * 24 * 60 * 60 * 1000; // default 7 days
+  const [, num, unit] = match;
+  const multipliers = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
+  return Number(num) * multipliers[unit];
+}
+
+async function sendMagicLinkEmail(email, token, redirectUrl) {
+  if (!emailTransporter) {
+    if (!isProduction) console.log(`[DEV] Magic link for ${email}: ${APP_URL}/auth/magic-link/verify?token=${token}&redirect=${encodeURIComponent(redirectUrl)}`);
+    return;
+  }
+  const magicLink = `${APP_URL}/auth/magic-link/verify?token=${token}&redirect=${encodeURIComponent(redirectUrl)}`;
+  await emailTransporter.sendMail({
+    from: EMAIL_FROM,
+    to: email,
+    subject: 'Sign in to CodeVerse',
+    html: `
+      <h2>Sign in to CodeVerse</h2>
+      <p>Click the link below to sign in (this link expires in 15 minutes):</p>
+      <p><a href="${magicLink}" style="display:inline-block;padding:12px 24px;background:#6c9eff;color:#fff;text-decoration:none;border-radius:8px;">Sign In</a></p>
+      <p>Or copy this URL:</p>
+      <p style="word-break:break-all;">${magicLink}</p>
+      <p>If you didn't request this, you can safely ignore this email.</p>
+    `,
+  });
+}
 
 // --- Routes ---
 
@@ -317,16 +494,257 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
       };
     }
 
-    const accessToken = jwt.sign(
-      { sub: profile.id, email: profile.email },
-      secret,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
-    return res.json({ user: profile, accessToken });
+    // Create or update user in database
+    const user = await createUser({
+      email: profile.email,
+      name: profile.name,
+      avatarUrl: profile.avatar,
+      provider: profile.provider,
+      providerId: profile.id,
+    });
+
+    const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, false);
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar_url,
+        provider: user.provider,
+      },
+      accessToken,
+      refreshToken,
+      expiresAt,
+    });
   } catch (err) {
     if (!isProduction) console.error('/auth/exchange error:', err);
     res.status(500).json({
       message: isProduction ? 'Sign-in failed.' : (err.message || 'Sign-in failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/register
+ * Body: { email: string, password: string, name?: string }
+ */
+app.post('/auth/register', authLimiter, async (req, res) => {
+  try {
+    const { email, password, name } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required.' });
+    }
+    if (typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Invalid email format.' });
+    }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain uppercase, lowercase, and a number.' });
+    }
+
+    const existing = await findUserByEmail(email);
+    if (existing) {
+      return res.status(409).json({ message: 'Email already registered.' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await createUser({
+      email,
+      name: name || email.split('@')[0],
+      provider: 'email',
+      passwordHash,
+    });
+
+    const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, false);
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar_url,
+        provider: user.provider,
+      },
+      accessToken,
+      refreshToken,
+      expiresAt,
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/register error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Registration failed.' : (err.message || 'Registration failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/login
+ * Body: { email: string, password: string, rememberMe?: boolean }
+ */
+app.post('/auth/login', authLimiter, async (req, res) => {
+  try {
+    const { email, password, rememberMe } = req.body || {};
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required.' });
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user || user.provider !== 'email' || !user.password_hash) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ message: 'Invalid email or password.' });
+    }
+
+    const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, !!rememberMe);
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar_url,
+        provider: user.provider,
+      },
+      accessToken,
+      refreshToken,
+      expiresAt,
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/login error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Login failed.' : (err.message || 'Login failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/magic-link/send
+ * Body: { email: string, redirectUrl?: string }
+ */
+app.post('/auth/magic-link/send', authLimiter, async (req, res) => {
+  try {
+    const { email, redirectUrl } = req.body || {};
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Valid email is required.' });
+    }
+
+    const user = await findUserByEmail(email);
+    const token = await createMagicLinkToken(email, user?.id || null);
+    const finalRedirectUrl = redirectUrl || 'codeverse-ai://auth';
+
+    await sendMagicLinkEmail(email, token, finalRedirectUrl);
+
+    // Always return success (don't reveal if email exists)
+    return res.json({ message: 'If the email exists, a magic link has been sent.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/magic-link/send error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to send magic link.' : (err.message || 'Failed to send magic link.'),
+    });
+  }
+});
+
+/**
+ * GET /auth/magic-link/verify?token=...&redirect=...
+ */
+app.get('/auth/magic-link/verify', async (req, res) => {
+  try {
+    const { token, redirect } = req.query;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).send('Missing or invalid token.');
+    }
+
+    const magicToken = await findMagicLinkToken(token);
+    if (!magicToken) {
+      return res.status(400).send('Invalid or expired magic link.');
+    }
+
+    await markMagicLinkTokenUsed(token);
+
+    // Find or create user
+    let user = await findUserByEmail(magicToken.email);
+    if (!user) {
+      user = await createUser({
+        email: magicToken.email,
+        name: magicToken.email.split('@')[0],
+        provider: 'email',
+      });
+    }
+
+    const { accessToken, refreshToken } = await generateTokensWithRefresh(user, false);
+
+    // Redirect to app with tokens
+    const redirectUrl = redirect || 'codeverse-ai://auth';
+    const params = new URLSearchParams({
+      accessToken,
+      refreshToken,
+      provider: 'email',
+    });
+    const target = redirectUrl.includes('?') ? `${redirectUrl}&${params}` : `${redirectUrl}?${params}`;
+
+    return sendRedirectToApp(res, target);
+  } catch (err) {
+    if (!isProduction) console.error('/auth/magic-link/verify error:', err);
+    res.status(500).send('Magic link verification failed.');
+  }
+});
+
+/**
+ * POST /auth/refresh
+ * Body: { refreshToken: string }
+ */
+app.post('/auth/refresh', authLimiter, async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    if (!refreshToken || typeof refreshToken !== 'string') {
+      return res.status(400).json({ message: 'Refresh token is required.' });
+    }
+
+    const tokenRecord = await findRefreshToken(refreshToken);
+    if (!tokenRecord) {
+      return res.status(401).json({ message: 'Invalid or expired refresh token.' });
+    }
+
+    // Get user
+    if (!pool) {
+      return res.status(503).json({ message: 'Database not configured.' });
+    }
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [tokenRecord.user_id]);
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ message: 'User not found.' });
+    }
+    const user = userResult.rows[0];
+
+    // Generate new access token
+    const { accessToken } = generateTokens(user);
+
+    return res.json({ accessToken });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/refresh error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Token refresh failed.' : (err.message || 'Token refresh failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/logout
+ * Body: { refreshToken?: string }
+ */
+app.post('/auth/logout', authLimiter, async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    if (refreshToken && typeof refreshToken === 'string') {
+      await deleteRefreshToken(refreshToken);
+    }
+    return res.json({ message: 'Logged out successfully.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/logout error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Logout failed.' : (err.message || 'Logout failed.'),
     });
   }
 });

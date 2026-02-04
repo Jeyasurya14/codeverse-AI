@@ -3,7 +3,13 @@ export type User = {
   email: string;
   name: string;
   avatar?: string;
-  provider: 'google' | 'github';
+  provider: 'google' | 'github' | 'email';
+};
+
+export type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt?: string;
 };
 
 export type ProgrammingLanguage = {

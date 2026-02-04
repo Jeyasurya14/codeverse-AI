@@ -21,6 +21,7 @@ const linking = {
 import type { Article } from '../types';
 
 import { LoginScreen } from '../screens/LoginScreen';
+import { RegisterScreen } from '../screens/RegisterScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
@@ -32,6 +33,7 @@ import { RechargeTokensScreen } from '../screens/RechargeTokensScreen';
 
 export type RootStackParamList = {
   Login: undefined;
+  Register: undefined;
   Onboarding: undefined;
   Main: undefined;
   ArticleList: { languageId: string; languageName: string };
@@ -126,7 +128,10 @@ export function RootNavigator() {
     <NavigationContainer linking={linking}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
-          <Stack.Screen name="Login" component={LoginScreen} />
+          <>
+            <Stack.Screen name="Login" component={LoginScreen} />
+            <Stack.Screen name="Register" component={RegisterScreen} />
+          </>
         ) : !isOnboardingDone ? (
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         ) : (

@@ -5,7 +5,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { exchangeOAuthCode } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { STORAGE_KEYS } from '../constants/theme';
-import type { User } from '../types';
+import type { User, AuthTokens } from '../types';
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
 
@@ -34,48 +34,87 @@ export function AuthDeepLinkHandler() {
       // #endregion
       if (!url) return;
       
-      let code: string | null = null;
-      let provider: 'google' | 'github' | null = null;
-      
-      // Check for path-based format: exp://.../auth/google/CODE or exp://.../auth/github/CODE (Android-safe, avoids query param stripping)
-      const pathMatch = url.match(/\/auth\/(google|github)\/([^/?&#]+)/);
-      if (pathMatch) {
-        provider = pathMatch[1] as 'google' | 'github';
-        code = decodeURIComponent(pathMatch[2]);
-        // #region agent log
-        console.log('[DEBUG AuthDeepLinkHandler] Found path-based format:', { provider, codeLength: code?.length });
-        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:38',message:'Path-based format detected',data:{provider,codeLength:code?.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-      } else {
-        // Fallback to query param format: exp://.../auth?code=...&provider=... (for standalone builds)
-        const q = url.indexOf('?');
-        if (q === -1) {
-          // #region agent log
-          console.log('[DEBUG AuthDeepLinkHandler] URL has no query params and no path format');
-          fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:45',message:'URL has no query params and no path format',data:{url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-          // #endregion
-          return;
+      // Parse URL params
+      const q = url.indexOf('?');
+      if (q === -1) {
+        // Check for path-based format: exp://.../auth/google/CODE or exp://.../auth/github/CODE
+        const pathMatch = url.match(/\/auth\/(google|github)\/([^/?&#]+)/);
+        if (pathMatch) {
+          const provider = pathMatch[1] as 'google' | 'github';
+          const code = decodeURIComponent(pathMatch[2]);
+          await handleOAuthCode(provider, code, url);
         }
-        let query = url.slice(q + 1);
-        const h = query.indexOf('#');
-        if (h !== -1) query = query.slice(0, h);
-        const params = Object.fromEntries(new URLSearchParams(query));
-        code = params.code || null;
-        provider = params.provider === 'github' ? 'github' : params.provider === 'google' ? 'google' : null;
-      }
-      // Check if URL contains auth path (works for both exp://.../auth and codeverse-ai://auth)
-      const hasAuthPath = url.includes('/auth') || url.includes('auth?') || url.includes('auth&') || url.includes('codeverse-ai');
-      // #region agent log
-      console.log('[DEBUG AuthDeepLinkHandler] Parsed params:', { code: !!code, provider, hasAuthPath, url });
-      fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:55',message:'Parsed URL params',data:{hasCode:!!code,provider,hasAuthPath,url},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-      // #endregion
-      if (!code || !provider || !hasAuthPath) {
-        // #region agent log
-        console.log('[DEBUG AuthDeepLinkHandler] URL validation failed');
-        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:33',message:'URL validation failed',data:{hasCode:!!code,hasProvider:!!provider,hasAuth:url.includes('auth'),hasCodeverse:url.includes('codeverse-ai')},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
         return;
       }
+
+      let query = url.slice(q + 1);
+      const h = query.indexOf('#');
+      if (h !== -1) query = query.slice(0, h);
+      const params = Object.fromEntries(new URLSearchParams(query));
+
+      // Check for magic link tokens (email auth)
+      if (params.accessToken && params.refreshToken && params.provider === 'email') {
+        await handleMagicLinkTokens(params.accessToken, params.refreshToken, params.expiresAt);
+        return;
+      }
+
+      // Check for OAuth code (path-based format)
+      const pathMatch = url.match(/\/auth\/(google|github)\/([^/?&#]+)/);
+      if (pathMatch) {
+        const provider = pathMatch[1] as 'google' | 'github';
+        const code = decodeURIComponent(pathMatch[2]);
+        await handleOAuthCode(provider, code, url);
+        return;
+      }
+
+      // Check for OAuth code (query param format)
+      const code = params.code || null;
+      const provider = params.provider === 'github' ? 'github' : params.provider === 'google' ? 'google' : null;
+      const hasAuthPath = url.includes('/auth') || url.includes('auth?') || url.includes('auth&') || url.includes('codeverse-ai');
+      
+      if (code && provider && hasAuthPath) {
+        await handleOAuthCode(provider, code, url);
+      }
+    };
+
+    const handleMagicLinkTokens = async (accessToken: string, refreshToken: string, expiresAt?: string) => {
+      try {
+        // Magic link tokens are already validated by backend, just sign in
+        // We need to fetch user info or get it from token
+        // For now, we'll decode the JWT to get user info (basic approach)
+        // In production, you might want to call an API endpoint to get user info
+        const tokens: AuthTokens = {
+          accessToken,
+          refreshToken,
+          expiresAt,
+        };
+        
+        // Extract user info from token (basic JWT decode without verification for now)
+        // Note: In production, you should verify the token or call an API endpoint
+        try {
+          const payload = JSON.parse(atob(accessToken.split('.')[1]));
+          const appUser: User = {
+            id: payload.sub,
+            email: payload.email || '',
+            name: payload.email?.split('@')[0] || 'User',
+            provider: 'email',
+          };
+          await signIn(appUser, tokens);
+          await completeOnboarding();
+          try {
+            await WebBrowser.dismissBrowser();
+          } catch {
+            // dismissBrowser not available on all platforms
+          }
+        } catch (e) {
+          console.error('Failed to decode token:', e);
+        }
+      } catch (e) {
+        console.error('Magic link token handling failed:', e);
+      }
+    };
+
+    const handleOAuthCode = async (provider: 'google' | 'github', code: string, url: string) => {
 
       try {
         // #region agent log
@@ -109,7 +148,7 @@ export function AuthDeepLinkHandler() {
         fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:42',message:'Starting code exchange',data:{codeLength:code.length,hasCodeVerifier:!!pending.codeVerifier},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         const redirectUri = `${BASE_URL.replace(/\/$/, '')}/auth/callback/${provider}`;
-        const { user, accessToken } = await exchangeOAuthCode(
+        const { user, accessToken, refreshToken, expiresAt } = await exchangeOAuthCode(
           provider,
           code,
           redirectUri,
@@ -126,7 +165,11 @@ export function AuthDeepLinkHandler() {
           avatar: user.avatar,
           provider,
         };
-        await signIn(appUser, accessToken);
+        await signIn(appUser, {
+          accessToken,
+          refreshToken,
+          expiresAt,
+        });
         await completeOnboarding();
         try {
           await WebBrowser.dismissBrowser();
@@ -135,11 +178,12 @@ export function AuthDeepLinkHandler() {
         }
       } catch (e) {
         // #region agent log
-        console.log('[DEBUG AuthDeepLinkHandler] Error in handleUrl:', e);
-        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:62',message:'Error in handleUrl',data:{error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        console.log('[DEBUG AuthDeepLinkHandler] Error in handleOAuthCode:', e);
+        fetch('http://127.0.0.1:7242/ingest/12a7e347-3367-4c6b-a5bb-ebd7ad79ae28',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'AuthDeepLinkHandler.tsx:62',message:'Error in handleOAuthCode',data:{error:String(e)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
         // #endregion
         // User can retry sign-in
       }
+    };
     };
 
     // #region agent log

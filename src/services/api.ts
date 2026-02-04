@@ -6,15 +6,42 @@
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
 const API_TIMEOUT_MS = 30000;
 
-type AuthTokens = {
-  accessToken: string;
-  refreshToken?: string;
-};
+import type { AuthTokens } from '../types';
 
 let authTokens: AuthTokens | null = null;
+let refreshPromise: Promise<string> | null = null;
 
 export function setAuthTokens(tokens: AuthTokens | null) {
   authTokens = tokens;
+}
+
+export function getAuthTokens(): AuthTokens | null {
+  return authTokens;
+}
+
+async function refreshAccessToken(): Promise<string> {
+  if (refreshPromise) return refreshPromise;
+  
+  if (!authTokens?.refreshToken) {
+    throw new Error('No refresh token available.');
+  }
+
+  refreshPromise = (async () => {
+    try {
+      const result = await api<{ accessToken: string }>('/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify({ refreshToken: authTokens!.refreshToken }),
+      });
+      if (authTokens) {
+        authTokens.accessToken = result.accessToken;
+      }
+      return result.accessToken;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
@@ -26,7 +53,8 @@ function fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Respo
 
 export async function api<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retryOn401 = true
 ): Promise<T> {
   if (!BASE_URL) {
     throw new Error('App is not configured. Please update and restart.');
@@ -42,6 +70,30 @@ export async function api<T>(
   try {
     const res = await fetchWithTimeout(url, { ...options, headers });
     if (!res.ok) {
+      // Try to refresh token on 401
+      if (res.status === 401 && retryOn401 && authTokens?.refreshToken && path !== '/auth/refresh') {
+        try {
+          const newAccessToken = await refreshAccessToken();
+          // Retry request with new token
+          const retryHeaders: HeadersInit = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${newAccessToken}`,
+            ...options.headers,
+          };
+          const retryRes = await fetchWithTimeout(url, { ...options, headers: retryHeaders });
+          if (!retryRes.ok) {
+            const err = await retryRes.json().catch(() => ({}));
+            const msg = (err as { message?: string }).message ?? retryRes.statusText;
+            throw new Error(msg || 'Request failed.');
+          }
+          return retryRes.json();
+        } catch (refreshErr) {
+          // Refresh failed, throw original 401 error
+          const err = await res.json().catch(() => ({}));
+          const msg = (err as { message?: string }).message ?? res.statusText;
+          throw new Error(msg || 'Authentication failed. Please sign in again.');
+        }
+      }
       const err = await res.json().catch(() => ({}));
       const msg = (err as { message?: string }).message ?? res.statusText;
       throw new Error(msg || 'Request failed.');
@@ -63,11 +115,63 @@ export async function exchangeOAuthCode(
   redirectUri: string,
   codeVerifier?: string
 ) {
-  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'google' | 'github' }; accessToken: string }>(
+  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'google' | 'github' }; accessToken: string; refreshToken: string; expiresAt?: string }>(
     '/auth/exchange',
     {
       method: 'POST',
       body: JSON.stringify({ provider, code, redirectUri, codeVerifier }),
+    }
+  );
+}
+
+// Email/Password Auth
+export async function registerEmail(email: string, password: string, name?: string) {
+  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'email' }; accessToken: string; refreshToken: string; expiresAt?: string }>(
+    '/auth/register',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    }
+  );
+}
+
+export async function loginEmail(email: string, password: string, rememberMe = false) {
+  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'email' }; accessToken: string; refreshToken: string; expiresAt?: string }>(
+    '/auth/login',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, password, rememberMe }),
+    }
+  );
+}
+
+export async function requestMagicLink(email: string, redirectUrl?: string) {
+  return api<{ message: string }>(
+    '/auth/magic-link/send',
+    {
+      method: 'POST',
+      body: JSON.stringify({ email, redirectUrl }),
+    }
+  );
+}
+
+export async function refreshToken(refreshToken: string) {
+  return api<{ accessToken: string }>(
+    '/auth/refresh',
+    {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    },
+    false // Don't retry refresh on 401
+  );
+}
+
+export async function logout(refreshToken?: string) {
+  return api<{ message: string }>(
+    '/auth/logout',
+    {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
     }
   );
 }

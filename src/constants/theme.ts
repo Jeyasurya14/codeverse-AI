@@ -112,6 +112,7 @@ export const AI_TOKENS = {
 } as const;
 
 export const STORAGE_KEYS = {
+  REMEMBER_ME: '@codeverse/remember_me',
   USER: '@codeverse/user',
   TOKENS_USED: '@codeverse/tokens_used',
   TOKENS_PURCHASED: '@codeverse/tokens_purchased',
