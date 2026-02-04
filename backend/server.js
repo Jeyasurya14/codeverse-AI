@@ -16,6 +16,8 @@ const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 const { authenticator } = require('otplib');
 const QRCode = require('qrcode');
+const fs = require('fs');
+const path = require('path');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
@@ -503,16 +505,29 @@ async function canCreateConversation(userId) {
  * Validates input and uses transaction to prevent race conditions
  */
 async function createConversation(userId, title = null) {
+  // Ensure debug log directory exists
+  const debugLogDir = path.join(__dirname, '../.cursor');
+  if (!fs.existsSync(debugLogDir)) {
+    fs.mkdirSync(debugLogDir, { recursive: true });
+  }
+  
+  // #region agent log
+  try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:505',message:'createConversation entry',data:{userId,title,hasPool:!!pool},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})+'\n');}catch(e){}
+  // #endregion
+  
   // Check database connection
   if (!pool) {
-    throw new Error('Database not configured');
-  }
-  if (!pool) {
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:511',message:'Pool check failed',data:{pool:pool},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})+'\n');}catch(e){}
+    // #endregion
     throw new Error('Database not configured');
   }
   
   // Input validation
   if (!userId || typeof userId !== 'string') {
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:519',message:'Invalid userId',data:{userId,type:typeof userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})+'\n');}catch(e){}
+    // #endregion
     throw new Error('Invalid user ID');
   }
   
@@ -528,12 +543,36 @@ async function createConversation(userId, title = null) {
     title = title.trim() || null;
   }
   
-  const client = await pool.connect();
+  // #region agent log
+  try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:531',message:'Before pool.connect',data:{poolExists:!!pool},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})+'\n');}catch(e){}
+  // #endregion
+  
+  let client;
+  try {
+    client = await pool.connect();
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:537',message:'After pool.connect success',data:{clientExists:!!client},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})+'\n');}catch(e){}
+    // #endregion
+  } catch (connectErr) {
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:540',message:'pool.connect failed',data:{error:connectErr.message,code:connectErr.code,detail:connectErr.detail},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})+'\n');}catch(e){}
+    // #endregion
+    throw connectErr;
+  }
   
   try {
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:545',message:'Before BEGIN transaction',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
+    // #endregion
     await client.query('BEGIN');
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:547',message:'After BEGIN transaction',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
+    // #endregion
     
     // Atomic check: Get plan and count in same transaction
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:549',message:'Before SELECT query',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+    // #endregion
     const checkResult = await client.query(
       `SELECT 
         u.subscription_plan,
@@ -545,8 +584,14 @@ async function createConversation(userId, title = null) {
       FOR UPDATE`,
       [userId]
     );
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:560',message:'After SELECT query',data:{rowCount:checkResult.rows.length,hasRows:checkResult.rows.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+    // #endregion
     
     if (checkResult.rows.length === 0) {
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:562',message:'User not found, rolling back',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+      // #endregion
       await client.query('ROLLBACK');
       throw new Error('User not found');
     }
@@ -557,6 +602,9 @@ async function createConversation(userId, title = null) {
     
     // Check limit (unlimited = -1)
     if (limit !== -1 && current >= limit) {
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:571',message:'Limit reached, rolling back',data:{limit,current,plan},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+      // #endregion
       await client.query('ROLLBACK');
       const error = new Error(`CONVERSATION_LIMIT_REACHED`);
       error.limit = limit;
@@ -566,19 +614,52 @@ async function createConversation(userId, title = null) {
     }
     
     // Create conversation
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:579',message:'Before INSERT query',data:{userId,title},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+    // #endregion
     const insertResult = await client.query(
       'INSERT INTO ai_conversations (user_id, title) VALUES ($1, $2) RETURNING *',
       [userId, title]
     );
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:584',message:'After INSERT query',data:{rowCount:insertResult.rows.length,hasId:!!insertResult.rows[0]?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+    // #endregion
     
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:586',message:'Before COMMIT',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
+    // #endregion
     await client.query('COMMIT');
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:588',message:'After COMMIT, returning result',data:{conversationId:insertResult.rows[0]?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+    // #endregion
     
     return insertResult.rows[0];
   } catch (err) {
-    await client.query('ROLLBACK');
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:592',message:'createConversation catch block',data:{error:err.message,code:err.code,detail:err.detail,constraint:err.constraint,stack:err.stack?.substring(0,200)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,C,D,E'})+'\n');}catch(e){}
+    // #endregion
+    
+    if (client) {
+      try {
+        // #region agent log
+        try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:595',message:'Attempting ROLLBACK',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
+        // #endregion
+        await client.query('ROLLBACK');
+        // #region agent log
+        try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:597',message:'ROLLBACK successful',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
+        // #endregion
+      } catch (rollbackErr) {
+        // #region agent log
+        try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:599',message:'ROLLBACK failed',data:{error:rollbackErr.message,code:rollbackErr.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
+        // #endregion
+      }
+    }
     
     // Re-throw known errors
     if (err.message === 'CONVERSATION_LIMIT_REACHED' || err.message === 'User not found' || err.message === 'Invalid user ID' || err.message === 'Database not configured') {
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:605',message:'Re-throwing known error',data:{message:err.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})+'\n');}catch(e){}
+      // #endregion
       throw err;
     }
     
@@ -611,7 +692,9 @@ async function createConversation(userId, title = null) {
     // Wrap other database errors with more context
     throw new Error(`Database error: ${err.message || 'Failed to create conversation'}`);
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 }
 
@@ -824,7 +907,9 @@ async function consumeTokens(userId, count) {
     console.error('❌ Error consuming tokens:', err.message);
     return { success: false, error: err.message };
   } finally {
-    client.release();
+    if (client) {
+      client.release();
+    }
   }
 }
 
@@ -2120,6 +2205,9 @@ app.get('/ai/conversations', async (req, res) => {
  * Rate limited: 10 per 15 minutes (production)
  */
 app.post('/ai/conversations', conversationLimiter, async (req, res) => {
+  // #region agent log
+  try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:2122',message:'POST /ai/conversations entry',data:{hasAuthHeader:!!req.headers.authorization},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C,D,E'})+'\n');}catch(e){}
+  // #endregion
   try {
     // Authentication
     const authHeader = req.headers.authorization;
@@ -2134,6 +2222,9 @@ app.post('/ai/conversations', conversationLimiter, async (req, res) => {
     let decoded;
     try {
       decoded = jwt.verify(token, secret);
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:2137',message:'JWT verified',data:{userId:decoded.sub},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})+'\n');}catch(e){}
+      // #endregion
     } catch (jwtErr) {
       return res.status(401).json({ 
         message: 'Invalid or expired token.',
@@ -2161,7 +2252,13 @@ app.post('/ai/conversations', conversationLimiter, async (req, res) => {
     }
     
     try {
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:2243',message:'Before createConversation call',data:{userId:decoded.sub,title},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A,B,C'})+'\n');}catch(e){}
+      // #endregion
       const conversation = await createConversation(decoded.sub, title || null);
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:2246',message:'createConversation success',data:{conversationId:conversation?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
+      // #endregion
       
       // Log successful creation (for monitoring)
       if (isProduction) {
@@ -2173,6 +2270,9 @@ app.post('/ai/conversations', conversationLimiter, async (req, res) => {
         message: 'Conversation created successfully.',
       });
     } catch (err) {
+      // #region agent log
+      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:2255',message:'createConversation catch in endpoint',data:{error:err.message,code:err.code,detail:err.detail,constraint:err.constraint},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})+'\n');}catch(e){}
+      // #endregion
       // Handle conversation limit error (structured error from createConversation)
       if (err.message === 'CONVERSATION_LIMIT_REACHED' || err.limit !== undefined) {
         const limit = err.limit || CONVERSATION_LIMITS.free;
@@ -2230,6 +2330,10 @@ app.post('/ai/conversations', conversationLimiter, async (req, res) => {
   } catch (err) {
     // Final error handler
     const statusCode = err.statusCode || 500;
+    
+    // #region agent log
+    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:2307',message:'Final error handler',data:{message:err.message,code:err.code,detail:err.detail,constraint:err.constraint,statusCode,stack:err.stack?.substring(0,300)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})+'\n');}catch(e){}
+    // #endregion
     
     // Log the actual error for debugging with full details
     console.error('❌ /ai/conversations POST final error handler:', {
