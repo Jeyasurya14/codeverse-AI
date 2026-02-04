@@ -22,13 +22,7 @@ import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import {
   sendAIMessage,
-  getConversations,
-  createConversation,
-  getConversationMessages,
-  deleteConversation,
   getAuthTokens,
-  type Conversation,
-  type ConversationMessage,
 } from '../services/api';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, SHADOWS } from '../constants/theme';
 
@@ -92,11 +86,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
   const [loading, setLoading] = useState(false);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [loadingConversations, setLoadingConversations] = useState(false);
-  const [creatingConversation, setCreatingConversation] = useState(false);
   const [lastMessageTime, setLastMessageTime] = useState<number>(0);
   const [messageCount, setMessageCount] = useState<number>(0);
   const sendTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -107,27 +97,13 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
                   input.trim().length <= MAX_INPUT_LENGTH &&
                   !loading;
 
-  // Load conversations on mount
+  // Reset messages when user changes
   useEffect(() => {
-    if (user) {
-      loadConversations();
-    } else {
-      setConversations([]);
+    if (!user) {
       setCurrentConversationId(null);
       setMessages([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Only depend on user, loadConversations is stable
-
-  // Load messages when conversation changes
-  useEffect(() => {
-    if (currentConversationId) {
-      loadMessages(currentConversationId);
-    } else {
-      setMessages([]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentConversationId]); // Only depend on currentConversationId, loadMessages is stable
+  }, [user]);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -211,449 +187,6 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
         console.warn('Failed to sign out on token expiration:', e);
       }
     }
-  };
-
-  const loadConversations = async () => {
-    if (!user) {
-      setConversations([]);
-      return;
-    }
-    
-    // Check if we have auth token before making request
-    const tokens = getAuthTokens();
-    if (!tokens?.accessToken) {
-      // No auth token, skip API call silently (expected when not authenticated)
-      setConversations([]);
-      return;
-    }
-    
-    setLoadingConversations(true);
-    try {
-      const result = await getConversations();
-      
-      // Validate response
-      if (!result || !Array.isArray(result.conversations)) {
-        throw new Error('Invalid response format');
-      }
-      
-      setConversations(result.conversations || []);
-    } catch (e) {
-      const errorMsg = e instanceof Error ? e.message : String(e);
-      
-      // Check if this is a token expiration error FIRST
-      if (isTokenError(e) || errorMsg.includes('Invalid token') || errorMsg.includes('Invalid or expired token')) {
-        // Token expired - handle it gracefully
-        if (user) {
-          // Only show alert and logout if user was logged in
-          // Use a single alert to avoid multiple popups
-          if (!sidebarVisible) {
-            Alert.alert(
-              'Session Expired',
-              'Your session has expired. Please sign in again.',
-              [
-                {
-                  text: 'OK',
-                  onPress: async () => {
-                    await handleTokenExpiration();
-                  },
-                },
-              ]
-            );
-          } else {
-            // If sidebar is open, just logout silently
-            await handleTokenExpiration();
-          }
-        }
-        setConversations([]);
-        return;
-      }
-      
-      // Handle other expected errors (404, not found, etc.)
-      const isExpectedError = 
-        errorMsg === 'Not found' ||
-        errorMsg.includes('Not found') ||
-        errorMsg.includes('404');
-      
-      if (!isExpectedError) {
-        // Only log unexpected errors
-        if (__DEV__) {
-          console.warn('Failed to load conversations:', errorMsg);
-        }
-      }
-      
-      // Set empty array for expected errors
-      setConversations([]);
-    } finally {
-      setLoadingConversations(false);
-    }
-  };
-
-  const loadMessages = async (conversationId: string) => {
-    try {
-      const result = await getConversationMessages(conversationId);
-      setMessages(result.messages.map(msg => ({
-        role: msg.role,
-        text: msg.text,
-      })));
-    } catch (e) {
-      if (isTokenError(e)) {
-        // Token expired - handle it
-        if (user) {
-          Alert.alert(
-            'Session Expired',
-            'Your session has expired. Please sign in again.',
-            [
-              {
-                text: 'OK',
-                onPress: async () => {
-                  await handleTokenExpiration();
-                },
-              },
-            ]
-          );
-        }
-      } else {
-        __DEV__ && console.warn('Failed to load messages', e);
-      }
-      setMessages([]);
-    }
-  };
-
-  const startNewConversation = async () => {
-    // Prevent multiple simultaneous requests
-    if (creatingConversation) {
-      return;
-    }
-
-    // Check if API is configured
-    const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-    if (!apiUrl) {
-      Alert.alert(
-        'Configuration Error',
-        'The app is not properly configured. Please check your settings and try again.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Check if user is authenticated first
-    if (!user) {
-      Alert.alert(
-        'Sign In Required',
-        'Please sign in to create conversations.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (navigation) {
-                navigation.navigate('Login');
-              }
-            },
-          },
-        ]
-      );
-      return;
-    }
-
-    // Check if we have auth token
-    const tokens = getAuthTokens();
-    if (!tokens?.accessToken) {
-      Alert.alert(
-        'Sign In Required',
-        'Please sign in to create conversations.',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              if (navigation) {
-                navigation.navigate('Login');
-              }
-            },
-          },
-        ]
-      );
-      return;
-    }
-
-    // Check if token is expired (if expiresAt is available)
-    if (tokens.expiresAt) {
-      const expiresAt = new Date(tokens.expiresAt).getTime();
-      const now = Date.now();
-      if (now >= expiresAt) {
-        // Token is expired
-        Alert.alert(
-          'Session Expired',
-          'Your session has expired. Please sign in again.',
-          [
-            {
-              text: 'OK',
-              onPress: async () => {
-                await handleTokenExpiration();
-              },
-            },
-          ]
-        );
-        return;
-      }
-    }
-
-    setCreatingConversation(true);
-    try {
-      // Add timeout to prevent hanging requests
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
-      });
-      
-      const result = await Promise.race([
-        createConversation(),
-        timeoutPromise,
-      ]) as Awaited<ReturnType<typeof createConversation>>;
-      
-      // Validate response
-      if (!result || !result.conversation || !result.conversation.id) {
-        throw new Error('Invalid response from server');
-      }
-      
-      setCurrentConversationId(result.conversation.id);
-      setMessages([]);
-      await loadConversations();
-      setSidebarVisible(false);
-    } catch (e: any) {
-      // Extract error details
-      let errorMsg = e instanceof Error ? e.message : String(e);
-      let errorStatus = (e as any)?.status;
-      let errorResponse = (e as any)?.response;
-      
-      // Try to extract more detailed error from response
-      if (errorResponse) {
-        if (typeof errorResponse === 'object' && errorResponse.message) {
-          errorMsg = errorResponse.message;
-        } else if (typeof errorResponse === 'string') {
-          try {
-            const parsed = JSON.parse(errorResponse);
-            if (parsed.message) {
-              errorMsg = parsed.message;
-            }
-          } catch {
-            // Not JSON, use as-is
-          }
-        }
-      }
-      
-      // Check for token errors FIRST (before parsing JSON)
-      if (isTokenError(e) || isTokenError({ message: errorMsg })) {
-        Alert.alert(
-          'Session Expired',
-          'Your session has expired. Please sign in again.',
-          [
-            {
-              text: 'OK',
-              onPress: async () => {
-                await handleTokenExpiration();
-              },
-            },
-          ]
-        );
-        return;
-      }
-      if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('AbortError')) {
-        Alert.alert(
-          'Connection Timeout',
-          'The request took too long. Please check your internet connection and try again.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      if (errorMsg.includes('Network') || errorMsg.includes('fetch') || errorMsg.includes('Failed to fetch')) {
-        Alert.alert(
-          'Connection Error',
-          'Unable to connect to the server. Please check your internet connection and try again.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      // Handle conversation limit error
-      if (e.message) {
-        try {
-          const errorData = typeof e.message === 'string' ? JSON.parse(e.message) : e.message;
-          if (errorData.error === 'CONVERSATION_LIMIT_REACHED' || errorData.limit !== undefined) {
-            const limit = errorData.limit || 2;
-            const plan = errorData.plan || 'free';
-            const current = errorData.current || limit;
-            
-            Alert.alert(
-              'Conversation Limit Reached',
-              `You have reached the maximum of ${limit} conversations for your ${plan} plan (${current}/${limit}). Please delete an existing conversation or upgrade to create more.`,
-              [
-                { text: 'OK', style: 'cancel' },
-                { 
-                  text: 'Upgrade Plan', 
-                  onPress: () => {
-                    try {
-                      navigation.navigate('RechargeTokens');
-                    } catch {
-                      // Screen might not exist
-                    }
-                  },
-                  style: 'default',
-                },
-              ]
-            );
-            return;
-          }
-          
-          // Handle other structured errors
-          if (errorData.error === 'INVALID_INPUT') {
-            Alert.alert('Invalid Input', errorData.message || 'Please check your input and try again.');
-            return;
-          }
-        } catch {
-          // Not JSON, continue with error message handling
-        }
-      }
-
-      // Handle specific error messages
-      if (errorMsg.includes('Not found') || errorMsg.includes('404')) {
-        Alert.alert(
-          'Service Unavailable',
-          'The conversation service is currently unavailable. Please try again later.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      if (errorMsg.includes('Request failed') || errorMsg.includes('Request took too long') || errorMsg.includes('timeout')) {
-        Alert.alert(
-          'Request Timeout',
-          'The request took too long. Please check your internet connection and try again.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      if (errorMsg.includes('App is not configured') || errorMsg.includes('not configured')) {
-        Alert.alert(
-          'Configuration Error',
-          'The app is not properly configured. Please check your settings and restart the app.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      if (errorMsg.includes('Database') || errorMsg.includes('connection error') || errorMsg.includes('SERVICE_UNAVAILABLE') || errorMsg.includes('DATABASE')) {
-        Alert.alert(
-          'Service Unavailable',
-          'The service is temporarily unavailable. Please try again in a few moments.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      // Try to extract more detailed error information from response
-      let detailedError = errorMsg;
-      if (errorResponse) {
-        if (typeof errorResponse === 'object') {
-          if (errorResponse.message) {
-            detailedError = errorResponse.message;
-          }
-          if (errorResponse.error && errorResponse.error !== 'INTERNAL_ERROR') {
-            detailedError = `${errorResponse.error}: ${detailedError}`;
-          }
-        } else if (typeof errorResponse === 'string') {
-          try {
-            const parsed = JSON.parse(errorResponse);
-            if (parsed.message) {
-              detailedError = parsed.message;
-            }
-          } catch {
-            // Not JSON, use original error message
-          }
-        }
-      }
-      
-      // Add status code context if available
-      if (errorStatus) {
-        detailedError = `[${errorStatus}] ${detailedError}`;
-      }
-
-      // Log error for debugging in dev mode with full details (but don't show in console.error which shows in UI)
-      if (__DEV__) {
-        console.warn('Failed to create conversation - Details:', {
-          message: errorMsg,
-          detailed: detailedError,
-          status: errorStatus,
-          response: errorResponse,
-          originalError: e instanceof Error ? e.message : String(e),
-        });
-      }
-
-      // Check if error message contains specific backend error indicators
-      if (detailedError.includes('Database') || detailedError.includes('database')) {
-        Alert.alert(
-          'Service Temporarily Unavailable',
-          'The service is experiencing issues. Please try again in a few moments.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-
-      // Generic error fallback with more helpful message
-      Alert.alert(
-        'Unable to Create Conversation', 
-        'Something went wrong while creating a new conversation. Please check your internet connection and try again. If the problem persists, try signing out and signing in again.',
-        [{ text: 'OK' }]
-      );
-    } finally {
-      setCreatingConversation(false);
-    }
-  };
-
-  const selectConversation = async (conversationId: string) => {
-    setCurrentConversationId(conversationId);
-    setSidebarVisible(false);
-  };
-
-  const handleDeleteConversation = async (conversationId: string) => {
-    Alert.alert(
-      'Delete Conversation',
-      'Are you sure you want to delete this conversation?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteConversation(conversationId);
-              if (currentConversationId === conversationId) {
-                setCurrentConversationId(null);
-                setMessages([]);
-              }
-              await loadConversations();
-            } catch (e) {
-              if (isTokenError(e)) {
-                Alert.alert(
-                  'Session Expired',
-                  'Your session has expired. Please sign in again.',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await handleTokenExpiration();
-                      },
-                    },
-                  ]
-                );
-              } else {
-                Alert.alert('Error', 'Failed to delete conversation');
-              }
-            }
-          },
-        },
-      ]
-    );
   };
 
   // Rate limiting check
@@ -755,13 +288,6 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
       }
       
       setMessages((m) => [...m, { role: 'assistant', text: sanitizedReply }]);
-      
-      // Reload conversations to update titles/counts (don't block on this)
-      loadConversations().catch((loadError) => {
-        if (__DEV__) {
-          console.warn('Failed to reload conversations:', loadError);
-        }
-      });
     } catch (e) {
       // Handle errors securely - don't expose internal error details
       const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred';
@@ -878,29 +404,11 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-    return date.toLocaleDateString();
-  };
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.menuButton}
-            onPress={() => setSidebarVisible(true)}
-            accessibilityLabel="Open conversations"
-          >
-            <Ionicons name="menu" size={24} color={COLORS.textPrimary} />
-          </TouchableOpacity>
           <View style={styles.headerLeft}>
             <View style={[styles.iconContainer, { backgroundColor: COLORS.primary + '18' }]}>
               <Ionicons name="sparkles" size={22} color={COLORS.primary} />
@@ -1116,105 +624,6 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
         </KeyboardAvoidingView>
       </SafeAreaView>
 
-      {/* Conversation Sidebar */}
-      <Modal
-        visible={sidebarVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setSidebarVisible(false)}
-      >
-        <View style={styles.sidebarOverlay}>
-          <View style={styles.sidebar}>
-            <SafeAreaView style={styles.sidebarSafe} edges={['top']}>
-              <View style={styles.sidebarHeader}>
-                <Text style={styles.sidebarTitle}>Conversations</Text>
-                <TouchableOpacity
-                  onPress={() => setSidebarVisible(false)}
-                  style={styles.closeButton}
-                >
-                  <Ionicons name="close" size={24} color={COLORS.textPrimary} />
-                </TouchableOpacity>
-              </View>
-              
-              <TouchableOpacity
-                style={styles.newConversationButton}
-                onPress={startNewConversation}
-                disabled={creatingConversation || (conversations.length >= 2 && !user)} // Disable if creating or free user has 2 conversations
-              >
-                {creatingConversation ? (
-                  <ActivityIndicator size="small" color={COLORS.primary} />
-                ) : (
-                  <Ionicons 
-                    name="add" 
-                    size={20} 
-                    color={creatingConversation || (conversations.length >= 2 && !user) ? COLORS.textMuted : COLORS.primary} 
-                  />
-                )}
-                <Text style={[
-                  styles.newConversationText,
-                  (creatingConversation || (conversations.length >= 2 && !user)) && styles.newConversationTextDisabled,
-                ]}>
-                  {creatingConversation ? 'Creating...' : 'New Conversation'}
-                </Text>
-              </TouchableOpacity>
-              {conversations.length >= 2 && (
-                <View style={styles.limitWarning}>
-                  <Ionicons name="information-circle" size={16} color={COLORS.warning} />
-                  <Text style={styles.limitWarningText}>
-                    Free plan limit: {conversations.length} / 2 conversations
-                  </Text>
-                </View>
-              )}
-
-              <ScrollView style={styles.conversationsList}>
-                {loadingConversations ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={COLORS.primary} />
-                  </View>
-                ) : conversations.length === 0 ? (
-                  <EmptyState
-                    icon="chatbubbles-outline"
-                    title="No conversations yet"
-                    subtitle="Start a new conversation to begin"
-                    actionLabel="New conversation"
-                    onAction={startNewConversation}
-                  />
-                ) : (
-                  conversations.map((conv) => (
-                    <TouchableOpacity
-                      key={conv.id}
-                      style={[
-                        styles.conversationItem,
-                        currentConversationId === conv.id && styles.conversationItemActive,
-                      ]}
-                      onPress={() => selectConversation(conv.id)}
-                      onLongPress={() => handleDeleteConversation(conv.id)}
-                    >
-                      <View style={styles.conversationContent}>
-                        <Text 
-                          style={[
-                            styles.conversationTitle,
-                            currentConversationId === conv.id && styles.conversationTitleActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {conv.title}
-                        </Text>
-                        <Text style={styles.conversationMeta}>
-                          {conv.messageCount} messages • {formatDate(conv.updatedAt)}
-                        </Text>
-                      </View>
-                      {currentConversationId === conv.id && (
-                        <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
-                      )}
-                    </TouchableOpacity>
-                  ))
-                )}
-              </ScrollView>
-            </SafeAreaView>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -1234,10 +643,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     gap: SPACING.sm,
-  },
-  menuButton: {
-    padding: SPACING.xs,
-    flexShrink: 0,
   },
   headerLeft: {
     flexDirection: 'row',
