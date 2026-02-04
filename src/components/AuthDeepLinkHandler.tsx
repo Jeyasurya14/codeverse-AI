@@ -184,7 +184,6 @@ export function AuthDeepLinkHandler() {
         // User can retry sign-in
       }
     };
-    };
 
     // #region agent log
     console.log('[DEBUG AuthDeepLinkHandler] Setting up Linking listeners');
