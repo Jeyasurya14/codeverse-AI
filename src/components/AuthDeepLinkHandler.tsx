@@ -100,7 +100,7 @@ export function AuthDeepLinkHandler() {
             provider: 'email',
           };
           await signIn(appUser, tokens);
-          await completeOnboarding();
+          // Onboarding is now completed automatically in signIn
           try {
             await WebBrowser.dismissBrowser();
           } catch {
@@ -170,7 +170,7 @@ export function AuthDeepLinkHandler() {
           refreshToken,
           expiresAt,
         });
-        await completeOnboarding();
+        // Onboarding is now completed automatically in signIn
         try {
           await WebBrowser.dismissBrowser();
         } catch {

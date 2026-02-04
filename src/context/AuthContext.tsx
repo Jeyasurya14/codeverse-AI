@@ -107,6 +107,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } else {
       await AsyncStorage.removeItem(STORAGE_KEYS.REMEMBER_ME);
     }
+    // Automatically complete onboarding so user goes directly to home page
+    await completeOnboarding();
   };
 
   const signOut = async () => {
