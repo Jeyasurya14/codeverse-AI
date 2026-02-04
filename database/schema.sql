@@ -26,7 +26,6 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_provider_id ON users(provider_id) WHERE provider_id IS NOT NULL;
 
 -- AI token usage and purchases
 CREATE TABLE IF NOT EXISTS token_usage (

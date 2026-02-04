@@ -45,8 +45,40 @@ const secret = JWT_SECRET || 'codeverse-dev-secret-change-in-production';
 
 // Database connection pool
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: isProduction ? { rejectUnauthorized: false } : false })
+  ? new Pool({ 
+      connectionString: process.env.DATABASE_URL, 
+      ssl: isProduction ? { rejectUnauthorized: false } : false,
+      max: 20, // Maximum number of clients in the pool
+      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+      connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection cannot be established
+    })
   : null;
+
+// Test database connection on startup
+if (pool) {
+  pool.on('error', (err) => {
+    console.error('Unexpected error on idle database client', err);
+  });
+  
+  // Test connection
+  pool.query('SELECT NOW()')
+    .then(() => {
+      console.log('✅ Database connected successfully');
+    })
+    .catch((err) => {
+      console.error('❌ Database connection failed:', err.message);
+      if (isProduction) {
+        console.error('FATAL: Cannot connect to database in production');
+        process.exit(1);
+      }
+    });
+} else {
+  console.warn('⚠️  DATABASE_URL not set - database operations will be mocked');
+  if (isProduction) {
+    console.error('FATAL: DATABASE_URL must be set in production');
+    process.exit(1);
+  }
+}
 
 // Email transporter (nodemailer)
 let emailTransporter = null;
@@ -130,9 +162,17 @@ const aiLimiter = rateLimit({
 // --- Database helpers ---
 
 async function findUserByEmail(email) {
-  if (!pool) return null;
-  const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase().trim()]);
-  return result.rows[0] || null;
+  if (!pool) {
+    console.warn('⚠️  Database not configured - cannot find user');
+    return null;
+  }
+  try {
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email.toLowerCase().trim()]);
+    return result.rows[0] || null;
+  } catch (err) {
+    console.error('❌ Error finding user by email:', err.message);
+    throw err;
+  }
 }
 
 async function findUserByProviderId(providerId, provider) {
@@ -143,21 +183,33 @@ async function findUserByProviderId(providerId, provider) {
 
 async function createUser({ email, name, passwordHash }) {
   if (!pool) {
+    console.warn('⚠️  Database not configured - returning mock user');
     return { id: `mock-${Date.now()}`, email, name, email_verified: false, provider: 'email' };
   }
+  
   const emailVerificationToken = crypto.randomBytes(32).toString('hex');
   const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-  const result = await pool.query(
-    `INSERT INTO users (email, name, password_hash, provider, email_verification_token, email_verification_expires_at)
-     VALUES ($1, $2, $3, 'email', $4, $5)
-     ON CONFLICT (email) DO NOTHING
-     RETURNING *`,
-    [email.toLowerCase().trim(), name, passwordHash, emailVerificationToken, emailVerificationExpires]
-  );
-  if (result.rows.length === 0) {
-    throw new Error('Email already registered');
+  
+  try {
+    const result = await pool.query(
+      `INSERT INTO users (email, name, password_hash, provider, email_verification_token, email_verification_expires_at)
+       VALUES ($1, $2, $3, 'email', $4, $5)
+       ON CONFLICT (email) DO NOTHING
+       RETURNING *`,
+      [email.toLowerCase().trim(), name, passwordHash, emailVerificationToken, emailVerificationExpires]
+    );
+    
+    if (result.rows.length === 0) {
+      throw new Error('Email already registered');
+    }
+    
+    const user = result.rows[0];
+    console.log(`✅ User created in database: ${user.email} (ID: ${user.id})`);
+    return user;
+  } catch (err) {
+    console.error('❌ Error creating user in database:', err.message);
+    throw err;
   }
-  return result.rows[0];
 }
 
 async function logSecurityEvent(userId, eventType, ipAddress, userAgent, details = {}) {
@@ -316,8 +368,26 @@ async function sendMagicLinkEmail(email, token, redirectUrl) {
 // --- Routes ---
 
 // Health (for load balancers / Render)
-app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+app.get('/health', async (req, res) => {
+  const health = {
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    database: 'disconnected',
+  };
+  
+  // Check database connection
+  if (pool) {
+    try {
+      await pool.query('SELECT 1');
+      health.database = 'connected';
+    } catch (err) {
+      health.database = 'error';
+      health.databaseError = err.message;
+    }
+  }
+  
+  const statusCode = health.database === 'connected' ? 200 : 503;
+  res.status(statusCode).json(health);
 });
 
 app.get('/', (req, res) => {
@@ -584,11 +654,15 @@ app.post('/auth/register', authLimiter, async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 12); // Higher cost for better security
+    
+    // Create user in PostgreSQL database
+    console.log(`[Register] Creating user in database: ${email}`);
     const user = await createUser({
       email,
       name: name || email.split('@')[0],
       passwordHash,
     });
+    console.log(`[Register] User created successfully: ${user.id}`);
 
     // Send email verification
     if (emailTransporter && user.email_verification_token) {
@@ -1311,6 +1385,9 @@ app.use((err, req, res, next) => {
 // --- Server & graceful shutdown ---
 const server = app.listen(PORT, () => {
   console.log(`CodeVerse API listening on port ${PORT} (${isProduction ? 'production' : 'development'})`);
+  if (!openai) console.warn('⚠️  OpenAI not configured - AI chat will be mocked');
+  if (!pool) console.warn('⚠️  Database not configured - user data will not be persisted');
+  if (pool) console.log('✅ Database connection pool initialized');
 });
 
 function shutdown(signal) {
