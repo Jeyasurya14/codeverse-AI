@@ -4,11 +4,14 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { useAuth } from '../context/AuthContext';
 import { COLORS, FONTS, SPACING } from '../constants/theme';
 
+// Support both exp:// (Expo Go) and codeverse-ai:// (standalone) deep links
+const isExpoGo = Constants.appOwnership === 'expo';
 const linking = {
-  prefixes: ['codeverse-ai://'],
+  prefixes: isExpoGo ? ['exp://', 'codeverse-ai://'] : ['codeverse-ai://'],
   config: {
     screens: {
       RechargeTokens: 'recharge',
