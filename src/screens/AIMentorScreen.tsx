@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,8 +34,60 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, SHADOWS }
 
 const TOKENS_PER_MESSAGE = AI_TOKENS.TOKENS_PER_MESSAGE; // 10 tokens per message
 
-export function AIMentorScreen({ navigation }: any) {
-  const { user } = useAuth();
+// Security and validation constants
+const MAX_INPUT_LENGTH = 500;
+const MAX_SANITIZED_LENGTH = 5000;
+const MIN_INPUT_LENGTH = 1;
+const MESSAGE_SEND_DEBOUNCE_MS = 500; // Prevent rapid-fire requests
+const MAX_MESSAGES_PER_MINUTE = 10; // Rate limiting
+
+const SUGGESTION_PROMPTS = [
+  'Explain recursion simply',
+  'Common interview question',
+  'Help me debug this code',
+  'Best practices for async',
+] as const;
+
+// Input sanitization utility
+const sanitizeInput = (text: string): string => {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  
+  // Remove null bytes and control characters (except newlines and tabs)
+  let sanitized = text
+    .replace(/\0/g, '') // Remove null bytes
+    .replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, ''); // Remove control chars except \n, \r, \t
+  
+  // Trim and normalize whitespace
+  sanitized = sanitized.trim().replace(/\s+/g, ' ');
+  
+  // Limit length
+  sanitized = sanitized.slice(0, MAX_SANITIZED_LENGTH);
+  
+  return sanitized;
+};
+
+// Sanitize message text for display (prevent XSS)
+const sanitizeMessageText = (text: string): string => {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  
+  // React Native Text component automatically escapes HTML, but we'll be extra safe
+  // Remove any potential script tags or dangerous patterns
+  return text
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, ''); // Remove event handlers
+};
+
+interface AIMentorScreenProps {
+  navigation: any;
+}
+
+export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
+  const { user, signOut } = useAuth();
   const { totalAvailable, freeRemaining, refresh } = useTokens();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
@@ -43,9 +96,16 @@ export function AIMentorScreen({ navigation }: any) {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const [creatingConversation, setCreatingConversation] = useState(false);
+  const [lastMessageTime, setLastMessageTime] = useState<number>(0);
+  const [messageCount, setMessageCount] = useState<number>(0);
+  const sendTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
-  const canSend = totalAvailable >= TOKENS_PER_MESSAGE && input.trim().length > 0;
+  const canSend = totalAvailable >= TOKENS_PER_MESSAGE && 
+                  input.trim().length >= MIN_INPUT_LENGTH && 
+                  input.trim().length <= MAX_INPUT_LENGTH &&
+                  !loading;
 
   // Load conversations on mount
   useEffect(() => {
@@ -73,6 +133,86 @@ export function AIMentorScreen({ navigation }: any) {
     scrollRef.current?.scrollToEnd({ animated: true });
   }, [messages, loading]);
 
+  // Scroll to bottom when keyboard shows
+  useEffect(() => {
+    const keyboardWillShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setTimeout(() => {
+          scrollRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    return () => {
+      keyboardWillShowListener.remove();
+    };
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (sendTimeoutRef.current) {
+        clearTimeout(sendTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Helper function to check if error is token-related
+  const isTokenError = (error: any): boolean => {
+    if (!error) return false;
+    
+    // Check error message string
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const lowerMsg = errorMsg.toLowerCase();
+    
+    // Check if it's a token-related error
+    const isTokenErrorMsg = 
+      lowerMsg.includes('invalid or expired token') ||
+      lowerMsg.includes('invalid token') ||
+      lowerMsg.includes('expired token') ||
+      lowerMsg.includes('unauthorized') ||
+      lowerMsg.includes('invalid_token') ||
+      lowerMsg.includes('authentication required') ||
+      lowerMsg.includes('no authentication token') ||
+      lowerMsg.includes('token expired') ||
+      lowerMsg === '401' ||
+      errorMsg === '401';
+    
+    // Check error object structure
+    if (typeof error === 'object') {
+      const errorObj = error as any;
+      if (errorObj.error === 'UNAUTHORIZED' || 
+          errorObj.error === 'INVALID_TOKEN' ||
+          errorObj.message?.toLowerCase().includes('token') ||
+          errorObj.message?.toLowerCase().includes('unauthorized')) {
+        return true;
+      }
+    }
+    
+    return isTokenErrorMsg;
+  };
+
+  // Handle token expiration by logging out and redirecting
+  const handleTokenExpiration = async () => {
+    try {
+      await signOut();
+      // Small delay to ensure state is cleared
+      setTimeout(() => {
+        if (navigation) {
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+        }
+      }, 100);
+    } catch (e) {
+      if (__DEV__) {
+        console.warn('Failed to sign out on token expiration:', e);
+      }
+    }
+  };
+
   const loadConversations = async () => {
     if (!user) {
       setConversations([]);
@@ -90,25 +230,58 @@ export function AIMentorScreen({ navigation }: any) {
     setLoadingConversations(true);
     try {
       const result = await getConversations();
+      
+      // Validate response
+      if (!result || !Array.isArray(result.conversations)) {
+        throw new Error('Invalid response format');
+      }
+      
       setConversations(result.conversations || []);
     } catch (e) {
-      // Only warn for unexpected errors, not 404/auth errors (expected when not authenticated)
       const errorMsg = e instanceof Error ? e.message : String(e);
+      
+      // Check if this is a token expiration error FIRST
+      if (isTokenError(e) || errorMsg.includes('Invalid token') || errorMsg.includes('Invalid or expired token')) {
+        // Token expired - handle it gracefully
+        if (user) {
+          // Only show alert and logout if user was logged in
+          // Use a single alert to avoid multiple popups
+          if (!sidebarVisible) {
+            Alert.alert(
+              'Session Expired',
+              'Your session has expired. Please sign in again.',
+              [
+                {
+                  text: 'OK',
+                  onPress: async () => {
+                    await handleTokenExpiration();
+                  },
+                },
+              ]
+            );
+          } else {
+            // If sidebar is open, just logout silently
+            await handleTokenExpiration();
+          }
+        }
+        setConversations([]);
+        return;
+      }
+      
+      // Handle other expected errors (404, not found, etc.)
       const isExpectedError = 
         errorMsg === 'Not found' ||
         errorMsg.includes('Not found') ||
-        errorMsg.includes('404') ||
-        errorMsg === 'Authentication required' ||
-        errorMsg.includes('Authentication required') ||
-        errorMsg.includes('UNAUTHORIZED') ||
-        errorMsg.includes('INVALID_TOKEN') ||
-        errorMsg.includes('No authentication token') ||
-        errorMsg.includes('No authentication');
+        errorMsg.includes('404');
       
       if (!isExpectedError) {
-        __DEV__ && console.warn('Failed to load conversations', e);
+        // Only log unexpected errors
+        if (__DEV__) {
+          console.warn('Failed to load conversations:', errorMsg);
+        }
       }
-      // Set empty array for expected errors (user not authenticated)
+      
+      // Set empty array for expected errors
       setConversations([]);
     } finally {
       setLoadingConversations(false);
@@ -123,20 +296,185 @@ export function AIMentorScreen({ navigation }: any) {
         text: msg.text,
       })));
     } catch (e) {
-      __DEV__ && console.warn('Failed to load messages', e);
+      if (isTokenError(e)) {
+        // Token expired - handle it
+        if (user) {
+          Alert.alert(
+            'Session Expired',
+            'Your session has expired. Please sign in again.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await handleTokenExpiration();
+                },
+              },
+            ]
+          );
+        }
+      } else {
+        __DEV__ && console.warn('Failed to load messages', e);
+      }
       setMessages([]);
     }
   };
 
   const startNewConversation = async () => {
+    // Prevent multiple simultaneous requests
+    if (creatingConversation) {
+      return;
+    }
+
+    // Check if API is configured
+    const apiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+    if (!apiUrl) {
+      Alert.alert(
+        'Configuration Error',
+        'The app is not properly configured. Please check your settings and try again.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    // Check if user is authenticated first
+    if (!user) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to create conversations.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation) {
+                navigation.navigate('Login');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Check if we have auth token
+    const tokens = getAuthTokens();
+    if (!tokens?.accessToken) {
+      Alert.alert(
+        'Sign In Required',
+        'Please sign in to create conversations.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation) {
+                navigation.navigate('Login');
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
+
+    // Check if token is expired (if expiresAt is available)
+    if (tokens.expiresAt) {
+      const expiresAt = new Date(tokens.expiresAt).getTime();
+      const now = Date.now();
+      if (now >= expiresAt) {
+        // Token is expired
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please sign in again.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await handleTokenExpiration();
+              },
+            },
+          ]
+        );
+        return;
+      }
+    }
+
+    setCreatingConversation(true);
     try {
-      const result = await createConversation();
+      // Add timeout to prevent hanging requests
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout')), 30000); // 30 second timeout
+      });
+      
+      const result = await Promise.race([
+        createConversation(),
+        timeoutPromise,
+      ]) as Awaited<ReturnType<typeof createConversation>>;
+      
+      // Validate response
+      if (!result || !result.conversation || !result.conversation.id) {
+        throw new Error('Invalid response from server');
+      }
+      
       setCurrentConversationId(result.conversation.id);
       setMessages([]);
       await loadConversations();
       setSidebarVisible(false);
     } catch (e: any) {
-      // Handle conversation limit error (production-grade error handling)
+      // Extract error details
+      let errorMsg = e instanceof Error ? e.message : String(e);
+      let errorStatus = (e as any)?.status;
+      let errorResponse = (e as any)?.response;
+      
+      // Try to extract more detailed error from response
+      if (errorResponse) {
+        if (typeof errorResponse === 'object' && errorResponse.message) {
+          errorMsg = errorResponse.message;
+        } else if (typeof errorResponse === 'string') {
+          try {
+            const parsed = JSON.parse(errorResponse);
+            if (parsed.message) {
+              errorMsg = parsed.message;
+            }
+          } catch {
+            // Not JSON, use as-is
+          }
+        }
+      }
+      
+      // Check for token errors FIRST (before parsing JSON)
+      if (isTokenError(e) || isTokenError({ message: errorMsg })) {
+        Alert.alert(
+          'Session Expired',
+          'Your session has expired. Please sign in again.',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                await handleTokenExpiration();
+              },
+            },
+          ]
+        );
+        return;
+      }
+      if (errorMsg.includes('timeout') || errorMsg.includes('timed out') || errorMsg.includes('AbortError')) {
+        Alert.alert(
+          'Connection Timeout',
+          'The request took too long. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      if (errorMsg.includes('Network') || errorMsg.includes('fetch') || errorMsg.includes('Failed to fetch')) {
+        Alert.alert(
+          'Connection Error',
+          'Unable to connect to the server. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Handle conversation limit error
       if (e.message) {
         try {
           const errorData = typeof e.message === 'string' ? JSON.parse(e.message) : e.message;
@@ -153,11 +491,10 @@ export function AIMentorScreen({ navigation }: any) {
                 { 
                   text: 'Upgrade Plan', 
                   onPress: () => {
-                    // Navigate to upgrade/recharge screen if available
                     try {
                       navigation.navigate('RechargeTokens');
                     } catch {
-                      // Screen might not exist, just show OK
+                      // Screen might not exist
                     }
                   },
                   style: 'default',
@@ -172,22 +509,104 @@ export function AIMentorScreen({ navigation }: any) {
             Alert.alert('Invalid Input', errorData.message || 'Please check your input and try again.');
             return;
           }
-          
-          if (errorData.error === 'UNAUTHORIZED' || errorData.error === 'INVALID_TOKEN') {
-            Alert.alert('Authentication Error', 'Please sign in again.');
-            return;
-          }
         } catch {
-          // Not JSON, continue with regular error handling
+          // Not JSON, continue with error message handling
+        }
+      }
+
+      // Handle specific error messages
+      if (errorMsg.includes('Not found') || errorMsg.includes('404')) {
+        Alert.alert(
+          'Service Unavailable',
+          'The conversation service is currently unavailable. Please try again later.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      if (errorMsg.includes('Request failed') || errorMsg.includes('Request took too long') || errorMsg.includes('timeout')) {
+        Alert.alert(
+          'Request Timeout',
+          'The request took too long. Please check your internet connection and try again.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      if (errorMsg.includes('App is not configured') || errorMsg.includes('not configured')) {
+        Alert.alert(
+          'Configuration Error',
+          'The app is not properly configured. Please check your settings and restart the app.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      if (errorMsg.includes('Database') || errorMsg.includes('connection error') || errorMsg.includes('SERVICE_UNAVAILABLE') || errorMsg.includes('DATABASE')) {
+        Alert.alert(
+          'Service Unavailable',
+          'The service is temporarily unavailable. Please try again in a few moments.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Try to extract more detailed error information from response
+      let detailedError = errorMsg;
+      if (errorResponse) {
+        if (typeof errorResponse === 'object') {
+          if (errorResponse.message) {
+            detailedError = errorResponse.message;
+          }
+          if (errorResponse.error && errorResponse.error !== 'INTERNAL_ERROR') {
+            detailedError = `${errorResponse.error}: ${detailedError}`;
+          }
+        } else if (typeof errorResponse === 'string') {
+          try {
+            const parsed = JSON.parse(errorResponse);
+            if (parsed.message) {
+              detailedError = parsed.message;
+            }
+          } catch {
+            // Not JSON, use original error message
+          }
         }
       }
       
-      // Generic error fallback
+      // Add status code context if available
+      if (errorStatus) {
+        detailedError = `[${errorStatus}] ${detailedError}`;
+      }
+
+      // Log error for debugging in dev mode with full details (but don't show in console.error which shows in UI)
+      if (__DEV__) {
+        console.warn('Failed to create conversation - Details:', {
+          message: errorMsg,
+          detailed: detailedError,
+          status: errorStatus,
+          response: errorResponse,
+          originalError: e instanceof Error ? e.message : String(e),
+        });
+      }
+
+      // Check if error message contains specific backend error indicators
+      if (detailedError.includes('Database') || detailedError.includes('database')) {
+        Alert.alert(
+          'Service Temporarily Unavailable',
+          'The service is experiencing issues. Please try again in a few moments.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Generic error fallback with more helpful message
       Alert.alert(
-        'Error', 
-        e.message || 'Failed to create new conversation. Please try again later.',
+        'Unable to Create Conversation', 
+        'Something went wrong while creating a new conversation. Please check your internet connection and try again. If the problem persists, try signing out and signing in again.',
         [{ text: 'OK' }]
       );
+    } finally {
+      setCreatingConversation(false);
     }
   };
 
@@ -214,7 +633,22 @@ export function AIMentorScreen({ navigation }: any) {
               }
               await loadConversations();
             } catch (e) {
-              Alert.alert('Error', 'Failed to delete conversation');
+              if (isTokenError(e)) {
+                Alert.alert(
+                  'Session Expired',
+                  'Your session has expired. Please sign in again.',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        await handleTokenExpiration();
+                      },
+                    },
+                  ]
+                );
+              } else {
+                Alert.alert('Error', 'Failed to delete conversation');
+              }
             }
           },
         },
@@ -222,32 +656,91 @@ export function AIMentorScreen({ navigation }: any) {
     );
   };
 
+  // Rate limiting check
+  const checkRateLimit = (): boolean => {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60000;
+    
+    // Reset counter if more than a minute has passed
+    if (lastMessageTime < oneMinuteAgo) {
+      setMessageCount(0);
+      setLastMessageTime(now);
+      return true;
+    }
+    
+    // Check if rate limit exceeded
+    if (messageCount >= MAX_MESSAGES_PER_MINUTE) {
+      Alert.alert(
+        'Rate Limit Exceeded',
+        'Please wait a moment before sending another message.',
+        [{ text: 'OK' }]
+      );
+      return false;
+    }
+    
+    return true;
+  };
+
   const sendMessage = async () => {
     if (!canSend || loading) return;
     
-    // Input validation
-    const text = input.trim();
-    if (!text || text.length === 0) {
+    // Rate limiting check
+    if (!checkRateLimit()) {
       return;
     }
     
-    // Sanitize input (remove excessive whitespace, limit length)
-    const sanitizedText = text.slice(0, 5000); // Max 5000 characters
+    // Input validation
+    const rawText = input.trim();
+    if (!rawText || rawText.length < MIN_INPUT_LENGTH || rawText.length > MAX_INPUT_LENGTH) {
+      Alert.alert(
+        'Invalid Input',
+        `Message must be between ${MIN_INPUT_LENGTH} and ${MAX_INPUT_LENGTH} characters.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
+    // Sanitize input
+    const sanitizedText = sanitizeInput(rawText);
+    
+    if (!sanitizedText || sanitizedText.length < MIN_INPUT_LENGTH) {
+      Alert.alert('Invalid Input', 'Please enter a valid message.');
+      return;
+    }
+    
+    // Clear any pending debounce
+    if (sendTimeoutRef.current) {
+      clearTimeout(sendTimeoutRef.current);
+      sendTimeoutRef.current = null;
+    }
     
     setInput('');
     setMessages((m) => [...m, { role: 'user', text: sanitizedText }]);
     setLoading(true);
+    setMessageCount((prev) => prev + 1);
+    setLastMessageTime(Date.now());
     
     try {
       const result = await sendAIMessage(sanitizedText, undefined, currentConversationId || undefined);
       
       // Validate response
-      if (!result || !result.reply) {
-        throw new Error('Invalid response from AI');
+      if (!result || typeof result !== 'object') {
+        throw new Error('Invalid response format');
+      }
+      
+      if (!result.reply || typeof result.reply !== 'string') {
+        throw new Error('Invalid response content');
+      }
+      
+      // Sanitize AI response before displaying
+      const sanitizedReply = sanitizeMessageText(result.reply);
+      
+      if (!sanitizedReply || sanitizedReply.length === 0) {
+        throw new Error('Empty response received');
       }
       
       // Update conversation ID if this was a new conversation
-      if (result.conversationId && result.conversationId !== currentConversationId) {
+      if (result.conversationId && typeof result.conversationId === 'string' && result.conversationId !== currentConversationId) {
         setCurrentConversationId(result.conversationId);
       }
       
@@ -261,7 +754,7 @@ export function AIMentorScreen({ navigation }: any) {
         }
       }
       
-      setMessages((m) => [...m, { role: 'assistant', text: result.reply }]);
+      setMessages((m) => [...m, { role: 'assistant', text: sanitizedReply }]);
       
       // Reload conversations to update titles/counts (don't block on this)
       loadConversations().catch((loadError) => {
@@ -270,9 +763,12 @@ export function AIMentorScreen({ navigation }: any) {
         }
       });
     } catch (e) {
+      // Handle errors securely - don't expose internal error details
+      const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred';
+      
       // Handle insufficient tokens error (402)
       if (e instanceof Error) {
-        if (e.message.includes('Insufficient tokens') || e.message.includes('402')) {
+        if (errorMessage.includes('Insufficient tokens') || errorMessage.includes('402')) {
           setMessages((m) => [
             ...m,
             {
@@ -280,7 +776,7 @@ export function AIMentorScreen({ navigation }: any) {
               text: `You don't have enough tokens. You need ${TOKENS_PER_MESSAGE} tokens per message. Please recharge to continue.`,
             },
           ]);
-        } else if (e.message.includes('CONVERSATION_LIMIT_REACHED')) {
+        } else if (errorMessage.includes('CONVERSATION_LIMIT_REACHED')) {
           // Handle conversation limit error
           try {
             const errorData = JSON.parse(e.message);
@@ -314,11 +810,58 @@ export function AIMentorScreen({ navigation }: any) {
               },
             ]);
           }
+        } else if (isTokenError(e)) {
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: 'Your session has expired. Please sign in again.',
+            },
+          ]);
+          // Show alert and redirect to login
+          Alert.alert(
+            'Session Expired',
+            'Your session has expired. Please sign in again.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await handleTokenExpiration();
+                },
+              },
+            ]
+          );
+        } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: 'Network error. Please check your connection and try again.',
+            },
+          ]);
         } else {
-          setMessages((m) => [...m, { role: 'assistant', text: e.message }]);
+          // Generic error - don't expose internal error details
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: 'Sorry, something went wrong. Please try again later.',
+            },
+          ]);
+          
+          // Log error for debugging in dev mode only
+          if (__DEV__) {
+            console.error('AI Message Error:', errorMessage);
+          }
         }
       } else {
-        setMessages((m) => [...m, { role: 'assistant', text: 'Something went wrong. Try again.' }]);
+        setMessages((m) => [
+          ...m,
+          {
+            role: 'assistant',
+            text: 'Sorry, something went wrong. Please try again later.',
+          },
+        ]);
       }
       
       // Refresh token balance even on error (in case backend consumed tokens)
@@ -349,21 +892,24 @@ export function AIMentorScreen({ navigation }: any) {
 
   return (
     <View style={styles.container}>
-      <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.menuButton}
             onPress={() => setSidebarVisible(true)}
+            accessibilityLabel="Open conversations"
           >
             <Ionicons name="menu" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
           <View style={styles.headerLeft}>
-            <View style={styles.iconContainer}>
-              <Ionicons name="sparkles" size={24} color={COLORS.primary} />
+            <View style={[styles.iconContainer, { backgroundColor: COLORS.primary + '18' }]}>
+              <Ionicons name="sparkles" size={22} color={COLORS.primary} />
             </View>
-            <View>
-              <Text style={styles.title}>AI Mentor</Text>
-              <Text style={styles.subtitle}>Learning & interview prep</Text>
+            <View style={styles.headerTextBlock}>
+              <Text style={styles.title} numberOfLines={1}>AI Mentor</Text>
+              <Text style={styles.subtitle} numberOfLines={2} ellipsizeMode="tail">
+                Coding help & interview prep
+              </Text>
             </View>
           </View>
           <TouchableOpacity
@@ -404,49 +950,80 @@ export function AIMentorScreen({ navigation }: any) {
           </Card>
         )}
 
-        <ScrollView
-          style={styles.chat}
-          contentContainerStyle={styles.chatContent}
-          ref={scrollRef}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.keyboardAvoidingView}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
         >
-          {messages.length === 0 && (
-            <Card style={styles.welcome} elevated>
+          <ScrollView
+            style={styles.chat}
+            contentContainerStyle={styles.chatContent}
+            ref={scrollRef}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+          >
+            {messages.length === 0 && (
+              <Card style={styles.welcome} elevated>
               <View style={styles.welcomeContent}>
-                <View style={styles.welcomeIcon}>
-                  <Ionicons name="sparkles" size={40} color={COLORS.primary} />
+                <View style={[styles.welcomeIcon, styles.welcomeIconCircle]}>
+                  <Ionicons name="sparkles" size={36} color={COLORS.primary} />
                 </View>
-                <Text style={styles.welcomeTitle}>Your AI Mentor</Text>
+                <Text style={styles.welcomeTitle}>Ask anything</Text>
                 <Text style={styles.welcomeDesc}>
-                  Get instant help with coding questions, explanations, and interview preparation. 
-                  Each message uses {TOKENS_PER_MESSAGE} tokens.
+                  Get explanations, code help, or practice interview questions. {TOKENS_PER_MESSAGE} tokens per message. Max {MAX_INPUT_LENGTH} characters per message.
                 </Text>
                 <View style={styles.welcomeStats}>
                   <View style={styles.statItem}>
-                    <View style={styles.statIcon}>
+                    <View style={[styles.statIcon, { backgroundColor: COLORS.secondary + '18' }]}>
                       <Ionicons name="gift" size={14} color={COLORS.secondary} />
                     </View>
-                    <View>
-                      <Text style={styles.statLabel}>Free Tokens</Text>
-                      <Text style={styles.statNumber}>
-                        {freeRemaining} / {AI_TOKENS.FREE_LIMIT}
-                      </Text>
+                    <View style={styles.statItemText}>
+                      <Text style={styles.statLabel}>Free</Text>
+                      <Text style={styles.statNumber}>{freeRemaining} / {AI_TOKENS.FREE_LIMIT}</Text>
                     </View>
                   </View>
                   <View style={styles.statItem}>
-                    <View style={styles.statIcon}>
+                    <View style={[styles.statIcon, { backgroundColor: COLORS.warning + '18' }]}>
                       <Ionicons name="flash" size={14} color={COLORS.warning} />
                     </View>
-                    <View>
-                      <Text style={styles.statLabel}>Total Available</Text>
-                      <Text style={styles.statNumber}>{totalAvailable} tokens</Text>
+                    <View style={styles.statItemText}>
+                      <Text style={styles.statLabel}>Available</Text>
+                      <Text style={styles.statNumber}>{totalAvailable}</Text>
                     </View>
                   </View>
                 </View>
+                <View style={styles.suggestionsSection}>
+                  <Text style={styles.suggestionsLabel}>Try asking</Text>
+                  <View style={styles.suggestionChips}>
+                    {SUGGESTION_PROMPTS.map((prompt) => (
+                      <TouchableOpacity
+                        key={prompt}
+                        style={[
+                          styles.suggestionChip,
+                          totalAvailable < TOKENS_PER_MESSAGE && styles.suggestionChipDisabled,
+                        ]}
+                        onPress={() => setInput(prompt)}
+                        activeOpacity={0.7}
+                        disabled={totalAvailable < TOKENS_PER_MESSAGE}
+                      >
+                        <Text 
+                          style={[
+                            styles.suggestionChipText,
+                            totalAvailable < TOKENS_PER_MESSAGE && styles.suggestionChipTextDisabled,
+                          ]} 
+                          numberOfLines={1}
+                        >
+                          {prompt}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               </View>
-            </Card>
-          )}
-          {messages.map((msg, i) => (
-            <View
+              </Card>
+            )}
+            {messages.map((msg, i) => (
+              <View
               key={i}
               style={[
                 styles.messageContainer, 
@@ -460,7 +1037,7 @@ export function AIMentorScreen({ navigation }: any) {
                   </View>
                   <View style={styles.bubbleBot}>
                     <Text style={styles.bubbleText}>
-                      {msg.text}
+                      {sanitizeMessageText(msg.text)}
                     </Text>
                   </View>
                 </>
@@ -468,7 +1045,7 @@ export function AIMentorScreen({ navigation }: any) {
                 <>
                   <View style={styles.bubbleUser}>
                     <Text style={styles.bubbleTextUser}>
-                      {msg.text}
+                      {sanitizeMessageText(msg.text)}
                     </Text>
                   </View>
                   <View style={styles.avatarUser}>
@@ -476,61 +1053,66 @@ export function AIMentorScreen({ navigation }: any) {
                   </View>
                 </>
               )}
-            </View>
-          ))}
-          {loading && (
-            <View style={styles.messageContainer}>
+              </View>
+            ))}
+            {loading && (
+              <View style={[styles.messageContainer, styles.messageBot]}>
               <View style={styles.avatarBot}>
                 <Ionicons name="sparkles" size={18} color={COLORS.primary} />
               </View>
-              <View style={[styles.bubble, styles.bubbleBot, styles.loadingBubble]}>
+              <View style={[styles.bubbleBot, styles.loadingBubble]}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
                 <Text style={styles.loadingText}>Thinking...</Text>
               </View>
-            </View>
-          )}
-        </ScrollView>
+              </View>
+            )}
+          </ScrollView>
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.inputRow}
-        >
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={[
-                styles.input,
-                !canSend && styles.inputDisabled,
-              ]}
-              placeholder="Ask about concepts, code, or interviews..."
-              placeholderTextColor={COLORS.textMuted}
-              value={input}
-              onChangeText={setInput}
-              multiline
-              maxLength={500}
-              editable={totalAvailable >= TOKENS_PER_MESSAGE && !loading}
-            />
-            {input.length > 0 && (
-              <Text style={styles.charCount}>{input.length} / 500</Text>
-            )}
+          <View style={styles.inputRow}>
+            <View style={styles.inputWrapper}>
+              <View style={styles.inputRowInner}>
+                <TextInput
+                  style={[
+                    styles.input,
+                    !canSend && styles.inputDisabled,
+                  ]}
+                  placeholder="Ask about concepts, code, or interviews..."
+                  placeholderTextColor={COLORS.textMuted}
+                  value={input}
+                  onChangeText={setInput}
+                  multiline
+                  maxLength={MAX_INPUT_LENGTH}
+                  editable={totalAvailable >= TOKENS_PER_MESSAGE && !loading}
+                  autoCapitalize="sentences"
+                  autoCorrect={true}
+                  spellCheck={true}
+                />
+                <TouchableOpacity
+                  onPress={sendMessage}
+                  disabled={!canSend || loading}
+                  style={[
+                    styles.sendButton,
+                    (!canSend || loading) && styles.sendButtonDisabled,
+                  ]}
+                >
+                  {loading ? (
+                    <ActivityIndicator size="small" color={COLORS.background} />
+                  ) : (
+                    <Ionicons 
+                      name="send" 
+                      size={20} 
+                      color={canSend ? COLORS.background : COLORS.textMuted} 
+                    />
+                  )}
+                </TouchableOpacity>
+              </View>
+              <View style={styles.inputFooter}>
+                <Text style={styles.charCount}>
+                  {input.length} / {MAX_INPUT_LENGTH}
+                </Text>
+              </View>
+            </View>
           </View>
-          <TouchableOpacity
-            onPress={sendMessage}
-            disabled={!canSend || loading}
-            style={[
-              styles.sendButton,
-              (!canSend || loading) && styles.sendButtonDisabled,
-            ]}
-          >
-            {loading ? (
-              <ActivityIndicator size="small" color={COLORS.background} />
-            ) : (
-              <Ionicons 
-                name="send" 
-                size={20} 
-                color={canSend ? COLORS.background : COLORS.textMuted} 
-              />
-            )}
-          </TouchableOpacity>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
@@ -557,18 +1139,22 @@ export function AIMentorScreen({ navigation }: any) {
               <TouchableOpacity
                 style={styles.newConversationButton}
                 onPress={startNewConversation}
-                disabled={conversations.length >= 2 && !user} // Disable if free user has 2 conversations
+                disabled={creatingConversation || (conversations.length >= 2 && !user)} // Disable if creating or free user has 2 conversations
               >
-                <Ionicons 
-                  name="add" 
-                  size={20} 
-                  color={conversations.length >= 2 && !user ? COLORS.textMuted : COLORS.primary} 
-                />
+                {creatingConversation ? (
+                  <ActivityIndicator size="small" color={COLORS.primary} />
+                ) : (
+                  <Ionicons 
+                    name="add" 
+                    size={20} 
+                    color={creatingConversation || (conversations.length >= 2 && !user) ? COLORS.textMuted : COLORS.primary} 
+                  />
+                )}
                 <Text style={[
                   styles.newConversationText,
-                  conversations.length >= 2 && !user && styles.newConversationTextDisabled,
+                  (creatingConversation || (conversations.length >= 2 && !user)) && styles.newConversationTextDisabled,
                 ]}>
-                  New Conversation
+                  {creatingConversation ? 'Creating...' : 'New Conversation'}
                 </Text>
               </TouchableOpacity>
               {conversations.length >= 2 && (
@@ -636,6 +1222,9 @@ export function AIMentorScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   safe: { flex: 1 },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -644,26 +1233,36 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
   },
   menuButton: {
     padding: SPACING.xs,
-    marginRight: SPACING.sm,
+    flexShrink: 0,
   },
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    marginRight: SPACING.xs,
+  },
+  headerTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   iconContainer: {
-    width: 40,
-    height: 40,
+    width: 36,
+    height: 36,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.backgroundCard,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
+    flexShrink: 0,
   },
   title: {
     fontSize: FONT_SIZES.title,
@@ -676,24 +1275,29 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
     color: COLORS.textSecondary,
     marginTop: 2,
+    flexShrink: 1,
+    lineHeight: 18,
+    flexWrap: 'wrap',
   },
   tokenChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.sm + 2,
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.md,
     backgroundColor: COLORS.backgroundCard,
     borderWidth: 1,
     borderColor: COLORS.border,
-    gap: SPACING.xs,
+    gap: SPACING.xs + 2,
+    flexShrink: 0,
+    marginLeft: SPACING.xs,
   },
   tokenChipLow: {
     borderColor: COLORS.warning,
     backgroundColor: COLORS.warning + '15',
   },
   tokenInfo: {
-    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
   tokenValue: { 
     fontSize: FONT_SIZES.lg, 
@@ -735,15 +1339,31 @@ const styles = StyleSheet.create({
   chat: { flex: 1 },
   chatContent: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    paddingBottom: SPACING.xl,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl + 20,
+    flexGrow: 1,
   },
   welcome: { 
+    marginTop: SPACING.md,
     marginBottom: SPACING.lg,
     alignItems: 'center',
   },
   welcomeIcon: {
     marginBottom: SPACING.md,
+  },
+  welcomeIconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: COLORS.primaryMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  welcomeContent: {
+    width: '100%',
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    alignItems: 'center',
   },
   welcomeTitle: {
     fontSize: FONT_SIZES.xl,
@@ -770,19 +1390,89 @@ const styles = StyleSheet.create({
   statItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.sm,
     justifyContent: 'center',
+    minWidth: 0,
+  },
+  statIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BORDER_RADIUS.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  statItemText: {
+    minWidth: 0,
+    justifyContent: 'center',
+    flexDirection: 'column',
+  },
+  statLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.textMuted,
+    lineHeight: 16,
+    marginBottom: 2,
+  },
+  statNumber: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    lineHeight: 18,
   },
   welcomeHint: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
     color: COLORS.textMuted,
   },
+  suggestionsSection: {
+    width: '100%',
+    marginTop: SPACING.lg,
+  },
+  suggestionsLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.textMuted,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  suggestionChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xs,
+  },
+  suggestionChip: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.backgroundCard,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...SHADOWS.card,
+  },
+  suggestionChipText: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    color: COLORS.textSecondary,
+  },
+  suggestionChipDisabled: {
+    opacity: 0.5,
+  },
+  suggestionChipTextDisabled: {
+    color: COLORS.textMuted,
+  },
   messageContainer: {
     flexDirection: 'row',
-    marginBottom: SPACING.md,
-    alignItems: 'flex-start',
-    gap: SPACING.xs,
+    marginBottom: SPACING.lg,
+    alignItems: 'flex-end',
+    gap: SPACING.sm,
   },
   messageUser: {
     justifyContent: 'flex-end',
@@ -817,16 +1507,24 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
   },
   bubbleUser: {
+    maxWidth: '82%',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    borderTopRightRadius: BORDER_RADIUS.sm,
     backgroundColor: COLORS.primary,
     alignSelf: 'flex-end',
-    borderTopRightRadius: BORDER_RADIUS.sm,
   },
   bubbleBot: {
+    maxWidth: '82%',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
+    borderRadius: BORDER_RADIUS.lg,
+    borderTopLeftRadius: BORDER_RADIUS.sm,
     backgroundColor: COLORS.backgroundCard,
     borderWidth: 1,
     borderColor: COLORS.borderLight,
     alignSelf: 'flex-start',
-    borderTopLeftRadius: BORDER_RADIUS.sm,
     ...SHADOWS.card,
   },
   loadingBubble: {
@@ -854,25 +1552,27 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    gap: SPACING.sm,
+    paddingTop: SPACING.md,
+    paddingBottom: Platform.OS === 'ios' ? SPACING.sm : SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.background,
   },
-  inputContainer: {
+  inputWrapper: {
     flex: 1,
-    position: 'relative',
+  },
+  inputRowInner: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: SPACING.sm,
   },
   input: {
+    flex: 1,
     backgroundColor: COLORS.backgroundCard,
     borderRadius: BORDER_RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    paddingBottom: SPACING.md + 4,
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.regular,
     color: COLORS.textPrimary,
@@ -880,18 +1580,24 @@ const styles = StyleSheet.create({
     minHeight: 44,
     borderWidth: 1,
     borderColor: COLORS.border,
+    textAlignVertical: 'top',
   },
   inputDisabled: {
     opacity: 0.5,
     backgroundColor: COLORS.backgroundCard + '80',
   },
+  inputFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: SPACING.xs + 2,
+    paddingBottom: SPACING.xs,
+    paddingRight: SPACING.xs + 44 + SPACING.sm, // Align with input (account for button width + gap)
+  },
   charCount: {
-    position: 'absolute',
-    bottom: 6,
-    right: SPACING.sm,
     fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
+    fontFamily: FONTS.medium,
     color: COLORS.textMuted,
+    lineHeight: 16,
   },
   sendButton: {
     width: 44,
@@ -900,6 +1606,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
+    marginBottom: 0,
   },
   sendButtonDisabled: {
     backgroundColor: COLORS.backgroundCard,
@@ -913,9 +1621,11 @@ const styles = StyleSheet.create({
   sidebar: {
     flex: 1,
     width: '85%',
+    maxWidth: 360,
     backgroundColor: COLORS.background,
     borderRightWidth: 1,
     borderRightColor: COLORS.border,
+    ...SHADOWS.card,
   },
   sidebarSafe: {
     flex: 1,
@@ -953,26 +1663,11 @@ const styles = StyleSheet.create({
   },
   conversationsList: {
     flex: 1,
+    paddingVertical: SPACING.sm,
   },
   loadingContainer: {
     padding: SPACING.xl,
     alignItems: 'center',
-  },
-  emptyState: {
-    padding: SPACING.xl,
-    alignItems: 'center',
-  },
-  emptyStateText: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginTop: SPACING.md,
-  },
-  emptyStateSubtext: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginTop: SPACING.xs,
   },
   conversationItem: {
     flexDirection: 'row',

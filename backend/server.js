@@ -503,6 +503,10 @@ async function canCreateConversation(userId) {
  * Validates input and uses transaction to prevent race conditions
  */
 async function createConversation(userId, title = null) {
+  // Check database connection
+  if (!pool) {
+    throw new Error('Database not configured');
+  }
   if (!pool) {
     throw new Error('Database not configured');
   }
@@ -574,12 +578,17 @@ async function createConversation(userId, title = null) {
     await client.query('ROLLBACK');
     
     // Re-throw known errors
-    if (err.message === 'CONVERSATION_LIMIT_REACHED' || err.message === 'User not found' || err.message === 'Invalid user ID') {
+    if (err.message === 'CONVERSATION_LIMIT_REACHED' || err.message === 'User not found' || err.message === 'Invalid user ID' || err.message === 'Database not configured') {
       throw err;
     }
     
-    // Log and wrap database errors
-    console.error('❌ Error creating conversation:', err.message);
+    // Log and wrap database errors with more detail
+    console.error('❌ Database error creating conversation:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+    });
     
     // Check for constraint violations
     if (err.code === '23505') { // Unique violation
@@ -589,7 +598,18 @@ async function createConversation(userId, title = null) {
       throw new Error('Invalid user ID');
     }
     
-    throw new Error('Failed to create conversation');
+    // Check for connection errors
+    if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT' || err.message?.includes('connection')) {
+      throw new Error('Database connection error');
+    }
+    
+    // Check for query errors
+    if (err.code === '42P01') { // Undefined table
+      throw new Error('Database schema error');
+    }
+    
+    // Wrap other database errors with more context
+    throw new Error(`Database error: ${err.message || 'Failed to create conversation'}`);
   } finally {
     client.release();
   }
@@ -2050,23 +2070,45 @@ app.get('/ai/conversations', async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Authentication required.' });
+      return res.status(401).json({ 
+        message: 'Authentication required.',
+        error: 'UNAUTHORIZED',
+      });
     }
 
     const token = authHeader.substring(7);
     let decoded;
     try {
       decoded = jwt.verify(token, secret);
-    } catch {
-      return res.status(401).json({ message: 'Invalid token.' });
+    } catch (jwtErr) {
+      return res.status(401).json({ 
+        message: 'Invalid or expired token.',
+        error: 'INVALID_TOKEN',
+      });
     }
 
     const conversations = await getUserConversations(decoded.sub);
     return res.json({ conversations });
   } catch (err) {
-    if (!isProduction) console.error('/ai/conversations error:', err);
+    // Handle database errors
+    if (err.message === 'Database not configured') {
+      return res.status(503).json({
+        message: 'Service temporarily unavailable.',
+        error: 'SERVICE_UNAVAILABLE',
+      });
+    }
+    
+    if (!isProduction) {
+      console.error('❌ /ai/conversations GET error:', {
+        message: err.message,
+        code: err.code,
+        stack: err.stack,
+      });
+    }
+    
     res.status(500).json({
       message: isProduction ? 'Failed to get conversations.' : (err.message || 'Failed to get conversations.'),
+      error: 'INTERNAL_ERROR',
     });
   }
 });
@@ -2173,10 +2215,13 @@ app.post('/ai/conversations', conversationLimiter, async (req, res) => {
         });
       }
       
-      // Log unexpected errors
+      // Log unexpected errors with full context
       console.error('❌ Unexpected error creating conversation:', {
         userId: decoded.sub,
         error: err.message,
+        code: err.code,
+        detail: err.detail,
+        constraint: err.constraint,
         stack: isProduction ? undefined : err.stack,
       });
       
@@ -2185,17 +2230,69 @@ app.post('/ai/conversations', conversationLimiter, async (req, res) => {
   } catch (err) {
     // Final error handler
     const statusCode = err.statusCode || 500;
+    
+    // Log the actual error for debugging with full details
+    console.error('❌ /ai/conversations POST final error handler:', {
+      message: err.message,
+      code: err.code,
+      detail: err.detail,
+      constraint: err.constraint,
+      statusCode,
+      stack: isProduction ? undefined : err.stack,
+    });
+    
+    // Check for specific error types and provide helpful messages
+    if (err.message && err.message.includes('Database not configured')) {
+      return res.status(503).json({
+        message: 'Service temporarily unavailable. Database connection error.',
+        error: 'SERVICE_UNAVAILABLE',
+      });
+    }
+    
+    if (err.message && err.message.includes('timeout')) {
+      return res.status(504).json({
+        message: 'Request timed out. Please try again.',
+        error: 'TIMEOUT',
+      });
+    }
+    
+    if (err.message && err.message.includes('Database error')) {
+      // Check for specific database error codes
+      if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+        return res.status(503).json({
+          message: 'Database connection error. Please try again in a few moments.',
+          error: 'DATABASE_CONNECTION_ERROR',
+        });
+      }
+      if (err.code === '42P01') {
+        return res.status(503).json({
+          message: 'Database schema error. Please contact support.',
+          error: 'DATABASE_SCHEMA_ERROR',
+        });
+      }
+      return res.status(503).json({
+        message: 'Database error. Please try again later.',
+        error: 'DATABASE_ERROR',
+      });
+    }
+    
+    // Check for connection errors
+    if (err.code === 'ECONNREFUSED' || err.code === 'ETIMEDOUT') {
+      return res.status(503).json({
+        message: 'Unable to connect to database. Please try again later.',
+        error: 'SERVICE_UNAVAILABLE',
+      });
+    }
+    
+    // In production, show generic message; in dev, show actual error
     const errorMessage = isProduction 
       ? 'Failed to create conversation. Please try again later.' 
       : (err.message || 'Failed to create conversation.');
     
-    if (!isProduction) {
-      console.error('/ai/conversations POST error:', err);
-    }
-    
     res.status(statusCode).json({
       message: errorMessage,
       error: 'INTERNAL_ERROR',
+      ...(isProduction ? {} : { details: err.message, code: err.code }),
     });
   }
 });

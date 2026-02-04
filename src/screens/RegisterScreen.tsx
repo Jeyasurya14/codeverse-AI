@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { NeonButton } from '../components/NeonButton';
 import { useEmailAuth } from '../hooks/useEmailAuth';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
@@ -70,14 +69,9 @@ export function RegisterScreen({ navigation }: any) {
           >
             <View style={styles.content}>
               <View style={styles.logoSection}>
-                <LinearGradient
-                  colors={COLORS.gradientAccent}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.logoCircle}
-                >
+                <View style={styles.logoCircle}>
                   <Text style={styles.logoText}>CV</Text>
-                </LinearGradient>
+                </View>
                 <Text style={styles.title}>Create Account</Text>
                 <Text style={styles.subtitle}>
                   Join CodeVerse and start learning
@@ -165,14 +159,13 @@ const styles = StyleSheet.create({
   content: { alignItems: 'center', paddingHorizontal: SPACING.lg },
   logoSection: { alignItems: 'center', marginBottom: SPACING.xl },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: BORDER_RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderFocus,
+    backgroundColor: COLORS.primary,
   },
   logoText: {
     fontSize: FONT_SIZES.xxl,

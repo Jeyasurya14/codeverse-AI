@@ -57,7 +57,10 @@ export async function api<T>(
   retryOn401 = true
 ): Promise<T> {
   if (!BASE_URL) {
-    throw new Error('App is not configured. Please update and restart.');
+    const error = new Error('App is not configured. Please update and restart.');
+    (error as any).status = 503;
+    (error as any).response = { error: 'CONFIGURATION_ERROR', message: 'App is not configured.' };
+    throw error;
   }
   const url = `${BASE_URL.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
   const headers: HeadersInit = {
@@ -69,6 +72,24 @@ export async function api<T>(
   };
   try {
     const res = await fetchWithTimeout(url, { ...options, headers });
+    
+    // Read response body once - we'll need it for both success and error cases
+    let responseText: string = '';
+    let responseData: any = {};
+    
+    try {
+      responseText = await res.text();
+      if (responseText) {
+        try {
+          responseData = JSON.parse(responseText);
+        } catch {
+          // Not JSON, that's okay
+        }
+      }
+    } catch (readError) {
+      // Failed to read response, continue with empty data
+    }
+    
     if (!res.ok) {
       // Try to refresh token on 401
       if (res.status === 401 && retryOn401 && authTokens?.refreshToken && path !== '/auth/refresh') {
@@ -81,62 +102,47 @@ export async function api<T>(
             ...options.headers,
           };
           const retryRes = await fetchWithTimeout(url, { ...options, headers: retryHeaders });
-          if (!retryRes.ok) {
-            let err: any = {};
-            try {
-              const errorText = await retryRes.text();
-              if (errorText) {
-                err = JSON.parse(errorText);
-              }
-            } catch {
-              // Ignore parse errors
-            }
-            const msg = (err as { message?: string }).message ?? retryRes.statusText;
-            throw new Error(msg || 'Request failed.');
-          }
           
-          // Parse JSON response safely
+          // Read retry response
+          let retryText = '';
+          let retryData: any = {};
           try {
-            const text = await retryRes.text();
-            if (!text) {
-              throw new Error('Empty response from server');
-            }
-            return JSON.parse(text);
-          } catch (parseError) {
-            throw new Error('Invalid response from server. Please try again.');
-          }
-        } catch (refreshErr) {
-          // Refresh failed, throw original 401 error
-          let err: any = {};
-          try {
-            const errorText = await res.text();
-            if (errorText) {
-              err = JSON.parse(errorText);
+            retryText = await retryRes.text();
+            if (retryText) {
+              try {
+                retryData = JSON.parse(retryText);
+              } catch {
+                // Not JSON
+              }
             }
           } catch {
-            // Ignore parse errors
+            // Ignore read errors
           }
-          const msg = (err as { message?: string }).message ?? res.statusText;
-          throw new Error(msg || 'Authentication failed. Please sign in again.');
+          
+          if (!retryRes.ok) {
+            const msg = retryData?.message ?? retryRes.statusText ?? 'Request failed.';
+            const error = new Error(msg);
+            (error as any).status = retryRes.status;
+            (error as any).response = retryData;
+            throw error;
+          }
+          
+          return retryData;
+        } catch (refreshErr) {
+          // Refresh failed, throw original 401 error
+          const msg = responseData?.message ?? res.statusText ?? 'Authentication failed. Please sign in again.';
+          const error = new Error(msg);
+          (error as any).status = res.status;
+          (error as any).response = responseData;
+          throw error;
         }
       }
-      let err: any = {};
-      let msg = res.statusText;
       
-      try {
-        const errorText = await res.text();
-        if (errorText) {
-          err = JSON.parse(errorText);
-          msg = err.message || res.statusText;
-        }
-      } catch (parseError) {
-        // If JSON parsing fails, use status text
-        msg = res.statusText || 'Request failed';
-      }
+      const msg = responseData?.message ?? res.statusText ?? 'Request failed';
       
       // Handle 403 conversation limit errors
       if (res.status === 403) {
-        const errorData = err as { message?: string; error?: string; limit?: number; current?: number; plan?: string };
+        const errorData = responseData as { message?: string; error?: string; limit?: number; current?: number; plan?: string };
         throw new Error(JSON.stringify({
           message: errorData.message || 'Conversation limit reached',
           error: errorData.error || 'CONVERSATION_LIMIT_REACHED',
@@ -153,12 +159,39 @@ export async function api<T>(
       
       // Handle 401 errors (authentication required)
       if (res.status === 401) {
-        throw new Error('Authentication required');
+        // Extract error message from response
+        const errorMsg = responseData?.message || msg || 'Authentication required';
+        const errorCode = responseData?.error;
+        
+        // Check if it's a token error specifically
+        if (errorCode === 'INVALID_TOKEN' ||
+            errorMsg.toLowerCase().includes('invalid token') || 
+            errorMsg.toLowerCase().includes('expired token') ||
+            errorMsg.toLowerCase().includes('invalid or expired')) {
+          const error = new Error('Invalid or expired token.');
+          (error as any).status = res.status;
+          (error as any).response = responseData;
+          throw error;
+        }
+        const error = new Error('Authentication required');
+        (error as any).status = res.status;
+        (error as any).response = responseData;
+        throw error;
       }
       
-      throw new Error(msg || 'Request failed.');
+      // Attach status code and response to error for better debugging
+      const error = new Error(msg || 'Request failed.');
+      (error as any).status = res.status;
+      (error as any).response = responseData;
+      throw error;
     }
-    return res.json();
+    
+    // Success - return parsed data
+    if (!responseText) {
+      throw new Error('Empty response from server');
+    }
+    
+    return responseData;
   } catch (e) {
     if (e instanceof Error) {
       if (e.name === 'AbortError') throw new Error('Request timed out. Try again.');
@@ -297,13 +330,20 @@ export async function getConversations() {
 
 export async function createConversation(title?: string) {
   try {
-    return await api<{ conversation: Conversation }>(
+    const result = await api<{ conversation: Conversation }>(
       '/ai/conversations',
       {
         method: 'POST',
         body: JSON.stringify({ title }),
       }
     );
+    
+    // Validate response structure
+    if (!result || !result.conversation) {
+      throw new Error('Invalid response: missing conversation data');
+    }
+    
+    return result;
   } catch (e: any) {
     // Re-throw with proper error format for conversation limits
     if (e.message && typeof e.message === 'string') {
@@ -316,7 +356,31 @@ export async function createConversation(title?: string) {
         // Not JSON, continue with original error
       }
     }
-    throw e;
+    
+    // Preserve original error with more context
+    if (e instanceof Error) {
+      // Attach status code if available
+      if ((e as any).status) {
+        const statusError = new Error(e.message);
+        (statusError as any).status = (e as any).status;
+        (statusError as any).response = (e as any).response;
+        throw statusError;
+      }
+      
+      // Check if it's a structured error from the API
+      if (e.message.includes('Failed to create conversation')) {
+        // This is the generic error from backend - preserve it but add context
+        const enhancedError = new Error(e.message);
+        (enhancedError as any).status = (e as any).status || 500;
+        (enhancedError as any).response = (e as any).response;
+        throw enhancedError;
+      }
+      throw e;
+    }
+    
+    const genericError = new Error('Failed to create conversation. Please try again later.');
+    (genericError as any).status = 500;
+    throw genericError;
   }
 }
 

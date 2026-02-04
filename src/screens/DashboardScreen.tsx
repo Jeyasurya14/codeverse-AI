@@ -197,9 +197,9 @@ export function DashboardScreen({ navigation }: any) {
                 <View style={[styles.cardTitleIcon, { backgroundColor: COLORS.warningMuted }]}>
                   <Ionicons name="flash" size={16} color={COLORS.warning} />
                 </View>
-                <View>
-                  <Text style={styles.cardTitle}>AI Tokens</Text>
-                  <Text style={styles.cardSubtitle}>Track your usage</Text>
+                <View style={styles.cardTitleBlock}>
+                  <Text style={styles.cardTitle} numberOfLines={1}>AI Tokens</Text>
+                  <Text style={styles.cardSubtitle} numberOfLines={1}>Track your usage</Text>
                 </View>
               </View>
               <View style={styles.tokenBadge}>
@@ -444,11 +444,14 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.lg,
+    gap: SPACING.md,
   },
   cardTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
+    flex: 1,
+    minWidth: 0,
   },
   cardTitleIcon: {
     width: 28,
@@ -457,6 +460,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cardTitleBlock: {
+    flex: 1,
+    minWidth: 0,
   },
   cardTitle: {
     fontSize: FONT_SIZES.lg,
@@ -492,6 +499,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.warning + '25',
     minWidth: 48,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
   tokenBadgeText: {
     fontSize: FONT_SIZES.lg,
@@ -553,7 +562,7 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
   },
-  profileInfo: { flex: 1 },
+  profileInfo: { flex: 1, minWidth: 0 },
   name: { 
     fontSize: FONT_SIZES.lg, 
     fontFamily: FONTS.primary, 
@@ -641,7 +650,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    gap: SPACING.sm,
+    gap: SPACING.md,
   },
   bookmarkIconWrap: {
     width: 36,
@@ -650,8 +659,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.backgroundElevated,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
-  bookmarkText: { flex: 1 },
+  bookmarkText: { flex: 1, minWidth: 0 },
   bookmarkTitle: {
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.primary,

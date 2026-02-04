@@ -13,18 +13,25 @@ type ProgressContextType = {
   lastRead: LastReadArticle | null;
   setLastRead: (article: LastReadArticle) => Promise<void>;
   clearLastRead: () => Promise<void>;
+  completedArticleIds: string[];
+  markArticleRead: (languageId: string, articleId: string) => Promise<void>;
 };
 
 const ProgressContext = createContext<ProgressContextType | undefined>(undefined);
 
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
   const [lastRead, setLastReadState] = useState<LastReadArticle | null>(null);
+  const [completedArticleIds, setCompletedArticleIds] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEYS.LAST_READ_ARTICLE);
-        if (raw) setLastReadState(JSON.parse(raw));
+        const [lastRaw, completedRaw] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_KEYS.LAST_READ_ARTICLE),
+          AsyncStorage.getItem(STORAGE_KEYS.COMPLETED_ARTICLES),
+        ]);
+        if (lastRaw) setLastReadState(JSON.parse(lastRaw));
+        if (completedRaw) setCompletedArticleIds(JSON.parse(completedRaw));
       } catch (e) {
         __DEV__ && console.warn('Progress load failed', e);
       }
@@ -41,8 +48,17 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.removeItem(STORAGE_KEYS.LAST_READ_ARTICLE);
   }, []);
 
+  const markArticleRead = useCallback(async (_languageId: string, articleId: string) => {
+    setCompletedArticleIds((prev) => {
+      if (prev.includes(articleId)) return prev;
+      const next = [...prev, articleId];
+      AsyncStorage.setItem(STORAGE_KEYS.COMPLETED_ARTICLES, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  }, []);
+
   return (
-    <ProgressContext.Provider value={{ lastRead, setLastRead, clearLastRead }}>
+    <ProgressContext.Provider value={{ lastRead, setLastRead, clearLastRead, completedArticleIds, markArticleRead }}>
       {children}
     </ProgressContext.Provider>
   );

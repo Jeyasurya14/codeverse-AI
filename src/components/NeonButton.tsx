@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, SHADOWS } from '../constants/theme';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'gradientBorder';
 
@@ -71,7 +71,7 @@ export function NeonButton({
         {...a11y}
       >
         <LinearGradient
-          colors={COLORS.gradientAccent}
+          colors={COLORS.gradientPrimary}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.gradientBorderOuter, { borderRadius: radius, padding: BORDER_WIDTH }]}
@@ -93,12 +93,7 @@ export function NeonButton({
       onPress={handlePress}
       disabled={disabled || loading}
       activeOpacity={0.85}
-      style={[
-        styles.wrapper,
-        variant === 'primary' && styles.wrapperPrimaryGlow,
-        { borderRadius: radius },
-        style,
-      ]}
+      style={[styles.wrapper, { borderRadius: radius }, style]}
       {...a11y}
     >
       <LinearGradient
@@ -133,15 +128,7 @@ export function NeonButton({
 const styles = StyleSheet.create({
   wrapper: {
     overflow: 'hidden',
-    shadowColor: COLORS.neonBlue,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  wrapperPrimaryGlow: {
-    shadowOpacity: 0.8,
-    shadowRadius: 16,
+    ...SHADOWS.button,
   },
   gradient: {
     paddingVertical: SPACING.md,

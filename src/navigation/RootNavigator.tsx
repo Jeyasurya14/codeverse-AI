@@ -76,7 +76,11 @@ function MainTabs() {
           paddingTop: SPACING.sm,
           paddingBottom: Platform.OS === 'ios' ? SPACING.lg : SPACING.sm,
           height: Platform.OS === 'ios' ? 84 : 64,
-          ...(Platform.OS === 'android' && { elevation: 8, shadowColor: '#000' }),
+          elevation: 4,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -1 },
+          shadowOpacity: 0.08,
+          shadowRadius: 4,
         },
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
@@ -183,7 +187,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: COLORS.textSecondary,
+    fontFamily: FONTS.medium,
+    color: COLORS.textPrimary,
   },
   tabIconWrap: {
     alignItems: 'center',

@@ -53,11 +53,14 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
           const isExpectedError = 
             errorMsg.includes('No authentication') ||
             errorMsg.includes('Authentication required') ||
+            errorMsg.includes('Invalid token') ||
+            errorMsg.includes('Invalid or expired token') ||
             errorMsg.includes('Not found') ||
             errorMsg.includes('404') ||
             errorMsg.includes('UNAUTHORIZED') ||
             errorMsg.includes('INVALID_TOKEN');
           
+          // Don't log expected token errors - they're handled elsewhere
           if (!isExpectedError) {
             __DEV__ && console.warn('Failed to load token usage from backend, using local storage', e);
           }

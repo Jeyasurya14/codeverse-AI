@@ -1,7 +1,6 @@
 import React, { useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Card } from '../components/Card';
 import { ArticleContent } from '../components/ArticleContent';
@@ -24,7 +23,7 @@ function getNextArticle(languageId: string, currentOrder: number): Article | nul
 
 export function ArticleDetailScreen({ navigation, route }: Props) {
   const { article, languageName } = route.params;
-  const { setLastRead } = useProgress();
+  const { setLastRead, markArticleRead } = useProgress();
   const { isBookmarked, toggleBookmark } = useBookmarks();
 
   const bookmarkItem = useMemo(
@@ -45,7 +44,8 @@ export function ArticleDetailScreen({ navigation, route }: Props) {
       languageName,
       articleTitle: article.title,
     });
-  }, [article.id, article.languageId, article.title, languageName, setLastRead]);
+    markArticleRead(article.languageId, article.id);
+  }, [article.id, article.languageId, article.title, languageName, setLastRead, markArticleRead]);
 
   const nextArticle = useMemo(
     () => getNextArticle(article.languageId, article.order),
@@ -71,14 +71,7 @@ export function ArticleDetailScreen({ navigation, route }: Props) {
           <Card accentColor={COLORS.primary} style={styles.header}>
             <View style={styles.badges}>
               <View style={styles.levelBadge}>
-                <LinearGradient
-                  colors={[COLORS.primary, COLORS.primaryDark]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.levelBadgeGradient}
-                >
-                  <Text style={styles.levelText}>{article.level}</Text>
-                </LinearGradient>
+                <Text style={styles.levelText}>{article.level}</Text>
               </View>
               <View style={styles.readTimeWrap}>
                 <Text style={styles.readTimeIcon}>⏱</Text>
@@ -172,20 +165,21 @@ const styles = StyleSheet.create({
   badges: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: SPACING.md,
     marginBottom: SPACING.md,
   },
   bookmarkBtn: {
     marginLeft: 'auto',
     padding: SPACING.xs,
+    flexShrink: 0,
   },
   levelBadge: {
-    borderRadius: BORDER_RADIUS.full,
+    borderRadius: BORDER_RADIUS.sm,
     overflow: 'hidden',
-  },
-  levelBadgeGradient: {
+    backgroundColor: COLORS.primary,
     paddingHorizontal: SPACING.md,
     paddingVertical: 6,
+    flexShrink: 0,
   },
   levelText: {
     fontSize: FONT_SIZES.xs,
@@ -197,7 +191,8 @@ const styles = StyleSheet.create({
   readTimeWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: SPACING.xs,
+    flexShrink: 0,
   },
   readTimeIcon: {
     fontSize: 12,

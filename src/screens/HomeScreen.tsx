@@ -43,10 +43,14 @@ const QUICK_LINKS = [
 export function HomeScreen({ navigation }: any) {
   const { user } = useAuth();
   const { totalAvailable, freeRemaining, freeUsed } = useTokens();
-  const { lastRead } = useProgress();
+  const { lastRead, completedArticleIds } = useProgress();
   const { bookmarks } = useBookmarks();
   const [conversationCount, setConversationCount] = useState(0);
   const [loadingStats, setLoadingStats] = useState(false);
+
+  const totalArticles = Object.values(MOCK_ARTICLES).reduce((sum, arr) => sum + arr.length, 0);
+  const completedCount = completedArticleIds.length;
+  const learningPercent = totalArticles > 0 ? Math.min(100, (completedCount / totalArticles) * 100) : 0;
 
   const continueArticle = lastRead
     ? (MOCK_ARTICLES[lastRead.languageId] ?? []).find((a) => a.id === lastRead.articleId)
@@ -139,11 +143,11 @@ export function HomeScreen({ navigation }: any) {
               stats.map((stat, index) => (
                 <Animated.View
                   key={stat.label}
-                  entering={FadeInDown.delay(index * 80).springify().damping(15)}
-                  style={styles.statCard}
+                  entering={FadeInDown.delay(index * 60).springify().damping(18)}
+                  style={[styles.statCard, { borderColor: stat.color + '20' }]}
                 >
-                  <View style={[styles.statIconContainer, { backgroundColor: stat.color + '15' }]}>
-                    <Ionicons name={stat.icon as any} size={20} color={stat.color} />
+                  <View style={[styles.statIconContainer, { backgroundColor: stat.color + '18' }]}>
+                    <Ionicons name={stat.icon as any} size={22} color={stat.color} />
                   </View>
                   <Text style={styles.statValue}>{stat.value}</Text>
                   <Text style={styles.statLabel}>{stat.label}</Text>
@@ -152,9 +156,37 @@ export function HomeScreen({ navigation }: any) {
             )}
           </View>
 
+          {/* Learning progress */}
+          <Animated.View entering={FadeInDown.delay(80).springify().damping(18)}>
+            <Card style={styles.learningProgressCard}>
+              <View style={styles.learningProgressHeader}>
+                <View style={[styles.learningProgressIconWrap, { backgroundColor: COLORS.primary + '18' }]}>
+                  <Ionicons name="school" size={20} color={COLORS.primary} />
+                </View>
+                <View style={styles.learningProgressText}>
+                  <Text style={styles.learningProgressLabel}>Learning progress</Text>
+                  <Text style={styles.learningProgressValue}>
+                    {completedCount} of {totalArticles} articles completed
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.learningProgressBarWrap}>
+                <View style={styles.learningProgressBarBg}>
+                  <View
+                    style={[
+                      styles.learningProgressBarFill,
+                      { width: `${learningPercent}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.learningProgressPercent}>{Math.round(learningPercent)}%</Text>
+              </View>
+            </Card>
+          </Animated.View>
+
           {/* Hero Section - Continue Learning */}
           {continueArticle ? (
-            <Animated.View entering={FadeInDown.delay(150).springify().damping(15)}>
+            <Animated.View entering={FadeInDown.delay(100).springify().damping(18)}>
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => {
@@ -172,7 +204,7 @@ export function HomeScreen({ navigation }: any) {
               <Card accentColor={COLORS.primary} style={styles.hero}>
                 <View style={styles.continueRow}>
                   <View style={styles.continueIconWrap}>
-                    <Ionicons name="book" size={24} color={COLORS.primary} />
+                    <Ionicons name="book" size={26} color={COLORS.primary} />
                   </View>
                   <View style={styles.continueText}>
                     <Text style={styles.continueLabel}>Continue Learning</Text>
@@ -189,15 +221,15 @@ export function HomeScreen({ navigation }: any) {
             </TouchableOpacity>
             </Animated.View>
           ) : (
-            <Animated.View entering={FadeInDown.delay(150).springify().damping(15)}>
+            <Animated.View entering={FadeInDown.delay(100).springify().damping(18)}>
             <Card accentColor={COLORS.primary} style={styles.hero}>
               <View style={styles.heroContent}>
                 <View style={styles.heroIconWrap}>
-                  <Ionicons name="rocket" size={32} color={COLORS.primary} />
+                  <Ionicons name="school" size={32} color={COLORS.primary} />
                 </View>
                 <Text style={styles.heroTitle}>Start Learning</Text>
                 <Text style={styles.heroSub}>
-                  Explore structured learning paths and master programming from fundamentals to advanced topics
+                  Structured paths from fundamentals to advanced
                 </Text>
                 <TouchableOpacity
                   style={styles.heroButton}
@@ -218,16 +250,14 @@ export function HomeScreen({ navigation }: any) {
             </Animated.View>
           )}
 
-          {/* Quick Access */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Quick Access</Text>
-            <Text style={styles.sectionSubtitle}>Jump to what you need</Text>
           </View>
           <View style={styles.quickAccessGrid}>
             {QUICK_LINKS.map((item, index) => (
               <Animated.View
                 key={item.id}
-                entering={FadeInDown.delay(250 + index * 60).springify().damping(15)}
+                entering={FadeInDown.delay(180 + index * 50).springify().damping(18)}
               >
               <TouchableOpacity
                 style={styles.quickAccessCard}
@@ -241,15 +271,15 @@ export function HomeScreen({ navigation }: any) {
                 activeOpacity={0.85}
               >
                 <View style={styles.quickAccessContent}>
-                  <View style={[styles.quickAccessIcon, { backgroundColor: item.accent + '15' }]}>
+                  <View style={[styles.quickAccessIcon, { backgroundColor: item.accent + '18' }]}>
                     <Ionicons name={item.icon as any} size={22} color={item.accent} />
                   </View>
                   <View style={styles.quickAccessText}>
                     <Text style={styles.quickAccessTitle}>{item.label}</Text>
                     <Text style={styles.quickAccessDesc}>{item.description}</Text>
                   </View>
-                  <View style={[styles.quickAccessArrow, { backgroundColor: item.accent + '10' }]}>
-                    <Ionicons name="chevron-forward" size={16} color={item.accent} />
+                  <View style={[styles.quickAccessArrow, { backgroundColor: COLORS.backgroundElevated }]}>
+                    <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
                   </View>
                 </View>
               </TouchableOpacity>
@@ -257,7 +287,6 @@ export function HomeScreen({ navigation }: any) {
             ))}
           </View>
 
-          {/* Token Info Card */}
           <Card style={styles.infoCard} elevated>
             <View style={styles.infoCardHeader}>
               <View style={styles.infoCardTitleWrap}>
@@ -266,7 +295,7 @@ export function HomeScreen({ navigation }: any) {
                 </View>
                 <View>
                   <Text style={styles.infoTitle}>AI Tokens</Text>
-                  <Text style={styles.infoSubtitle}>Track your usage</Text>
+                  <Text style={styles.infoSubtitle}>Usage</Text>
                 </View>
               </View>
               <View style={styles.tokenBadgeSmall}>
@@ -282,14 +311,14 @@ export function HomeScreen({ navigation }: any) {
                 </Text>
               </View>
               <View style={styles.progressBarContainer}>
-                <View 
+                <View
                   style={[
-                    styles.progressBar, 
-                    { 
+                    styles.progressBar,
+                    {
                       width: `${Math.min(freeUsagePercent, 100)}%`,
                       backgroundColor: freeUsagePercent > 80 ? COLORS.error : COLORS.primary,
-                    }
-                  ]} 
+                    },
+                  ]}
                 />
               </View>
               <View style={styles.progressFooter}>
@@ -333,32 +362,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    gap: SPACING.md,
   },
   headerLeft: {
     flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
   },
   greeting: {
     fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
+    color: COLORS.textMuted,
     marginBottom: SPACING.xs,
+    letterSpacing: 0.3,
   },
   name: {
     fontSize: FONT_SIZES.title,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
   },
   tokenBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
+    gap: SPACING.sm,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.warningMuted,
     borderWidth: 1,
-    borderColor: COLORS.warning + '25',
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.backgroundCard,
+    flexShrink: 0,
   },
   tokenValue: {
     fontSize: FONT_SIZES.lg,
@@ -383,12 +417,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.borderLight,
-    minHeight: 100,
+    minHeight: 106,
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   statIconContainer: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -408,8 +443,62 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: 0.2,
   },
+  learningProgressCard: {
+    marginBottom: SPACING.lg,
+  },
+  learningProgressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.md,
+  },
+  learningProgressIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  learningProgressText: { flex: 1, minWidth: 0 },
+  learningProgressLabel: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    color: COLORS.textPrimary,
+    marginBottom: 2,
+  },
+  learningProgressValue: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+  },
+  learningProgressBarWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  learningProgressBarBg: {
+    flex: 1,
+    height: 8,
+    backgroundColor: COLORS.backgroundElevated,
+    borderRadius: BORDER_RADIUS.full,
+    overflow: 'hidden',
+  },
+  learningProgressBarFill: {
+    height: '100%',
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  learningProgressPercent: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.primary,
+    color: COLORS.primary,
+    minWidth: 36,
+    textAlign: 'right',
+  },
   hero: { 
     marginBottom: SPACING.xl,
+    overflow: 'hidden',
   },
   continueWrap: { 
     marginBottom: SPACING.xl,
@@ -445,16 +534,16 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
   },
   heroIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: BORDER_RADIUS.xl,
+    width: 56,
+    height: 56,
+    borderRadius: BORDER_RADIUS.lg,
     backgroundColor: COLORS.primaryMuted,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
   },
   heroTitle: {
-    fontSize: FONT_SIZES.hero,
+    fontSize: FONT_SIZES.title,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
     marginBottom: SPACING.md,
@@ -489,21 +578,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   sectionHeader: {
-    marginBottom: SPACING.lg,
+    marginBottom: SPACING.md,
     marginTop: SPACING.xs,
   },
   sectionTitle: {
     fontSize: FONT_SIZES.xl,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
     letterSpacing: -0.3,
-  },
-  sectionSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    letterSpacing: 0.2,
   },
   quickAccessGrid: {
     gap: SPACING.sm,
@@ -523,8 +605,8 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   quickAccessIcon: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -532,6 +614,7 @@ const styles = StyleSheet.create({
   },
   quickAccessText: {
     flex: 1,
+    minWidth: 0,
   },
   quickAccessTitle: {
     fontSize: FONT_SIZES.md,
@@ -556,18 +639,20 @@ const styles = StyleSheet.create({
   },
   infoCard: {
     marginTop: SPACING.md,
+    overflow: 'hidden',
   },
   infoCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     marginBottom: SPACING.lg,
   },
   infoCardTitleWrap: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: SPACING.md,
     flex: 1,
+    minWidth: 0,
   },
   infoIconContainer: {
     width: 36,
@@ -635,6 +720,7 @@ const styles = StyleSheet.create({
   progressBar: {
     height: '100%',
     borderRadius: BORDER_RADIUS.full,
+    overflow: 'hidden',
   },
   progressFooter: {
     flexDirection: 'row',

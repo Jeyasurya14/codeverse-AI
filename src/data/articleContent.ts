@@ -3104,4 +3104,919 @@ function Parent() {
 \`\`\`
 
 Measure before optimizing; use these tools when you have measured a real performance problem.`,
+
+  // —— TensorFlow (13) ——
+  '13-intro-tf': `# Introduction to TensorFlow
+
+TensorFlow is an open-source machine learning framework developed by Google. It is used for building and training neural networks, from simple linear models to large-scale deep learning systems. TensorFlow supports deployment on CPUs, GPUs, TPUs, and mobile devices.
+
+## Why TensorFlow?
+
+- **Production-ready**: Used by Google and many companies for production ML systems
+- **Flexible**: Supports research and production with the same API
+- **Ecosystem**: TensorFlow Lite (mobile), TF.js (browser), TensorFlow Serving (deploy)
+- **Keras integration**: High-level Keras API is the recommended way to build models
+
+## Installation
+
+\`\`\`bash
+pip install tensorflow
+# or for GPU support (with CUDA/cuDNN installed):
+# pip install tensorflow[and-cuda]
+\`\`\`
+
+## Your First TensorFlow Program
+
+\`\`\`python
+import tensorflow as tf
+
+# Check version
+print(tf.__version__)
+
+# Create a constant tensor
+x = tf.constant([[1, 2], [3, 4]])
+print(x)
+# tf.Tensor([[1 2] [3 4]], shape=(2, 2), dtype=int32)
+
+# Simple computation
+y = tf.constant([[5, 6], [7, 8]])
+z = tf.add(x, y)
+print(z.numpy())
+\`\`\`
+
+## Key Concepts
+
+1. **Tensors**: Multi-dimensional arrays (like NumPy arrays) that can run on GPU
+2. **Graph (legacy)**: TensorFlow 1.x used a static graph; TF 2.x uses eager execution by default
+3. **Eager execution**: Operations run immediately, like NumPy—no separate build/run phase
+4. **Keras**: High-level API for defining layers, models, and training loops
+
+## Next Steps
+
+In the following articles you will learn tensors and operations, the Keras API, building and training models, and deploying them.`,
+
+  '13-tensors-ops': `# Tensors and Operations
+
+In TensorFlow, data is represented as **tensors**: multi-dimensional arrays with a uniform type. Tensors have a **shape** (dimensions) and a **dtype** (e.g. float32, int32).
+
+## Creating Tensors
+
+\`\`\`python
+import tensorflow as tf
+
+# Scalars (0-D)
+s = tf.constant(42)
+
+# Vectors (1-D)
+v = tf.constant([1.0, 2.0, 3.0])
+
+# Matrices (2-D)
+m = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
+
+# Higher dimensions
+t = tf.ones((2, 3, 4))  # shape (2, 3, 4)
+\`\`\`
+
+## Common Operations
+
+\`\`\`python
+a = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
+b = tf.constant([[5, 6], [7, 8]], dtype=tf.float32)
+
+# Element-wise
+c = tf.add(a, b)
+c = a + b
+c = tf.multiply(a, b)
+c = a * b
+
+# Matrix multiplication
+d = tf.matmul(a, b)
+d = a @ b
+
+# Reduction
+tf.reduce_sum(a)
+tf.reduce_mean(a, axis=1)
+\`\`\`
+
+## Shape and Reshaping
+
+\`\`\`python
+x = tf.constant([[1, 2, 3], [4, 5, 6]])
+print(x.shape)  # (2, 3)
+
+y = tf.reshape(x, (3, 2))
+z = tf.reshape(x, (-1,))  # flatten; -1 infers size
+\`\`\`
+
+## Converting to/from NumPy
+
+\`\`\`python
+import numpy as np
+arr = np.array([[1, 2], [3, 4]])
+t = tf.constant(arr)
+back = t.numpy()
+\`\`\`
+
+Understanding tensors and operations is the foundation for building and training models in TensorFlow.`,
+
+  '13-keras-sequential': `# Keras API and Sequential Models
+
+The **Keras** API in TensorFlow provides a simple way to build neural networks. A **Sequential** model is a linear stack of layers: each layer has exactly one input and one output.
+
+## Building a Sequential Model
+
+\`\`\`python
+import tensorflow as tf
+from tensorflow import keras
+
+model = keras.Sequential([
+    keras.layers.Dense(128, activation='relu', input_shape=(784,)),
+    keras.layers.Dense(64, activation='relu'),
+    keras.layers.Dense(10, activation='softmax')
+])
+
+model.summary()
+\`\`\`
+
+## Adding Layers Step by Step
+
+\`\`\`python
+model = keras.Sequential()
+model.add(keras.layers.Dense(128, activation='relu', input_shape=(784,)))
+model.add(keras.layers.Dropout(0.2))
+model.add(keras.layers.Dense(10, activation='softmax'))
+\`\`\`
+
+## Compile and Fit
+
+\`\`\`python
+model.compile(
+    optimizer='adam',
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+
+# Assuming you have train_images, train_labels
+# model.fit(train_images, train_labels, epochs=5, batch_size=32)
+\`\`\`
+
+## When to Use Sequential
+
+- **Pros**: Simple, readable, good for linear stacks (MLPs, simple CNNs)
+- **Limitation**: Single input, single output, no branching or skip connections
+
+For multiple inputs/outputs or custom topologies, use the **Functional API** or **Subclassing**.`,
+
+  '13-layers': `# Layers: Dense, Conv2D, Pooling
+
+TensorFlow (Keras) provides many layer types. Here are the most common.
+
+## Dense (Fully Connected)
+
+\`\`\`python
+from tensorflow.keras import layers
+
+layer = layers.Dense(64, activation='relu', input_shape=(32,))
+# Output shape: (batch, 64)
+\`\`\`
+
+## Conv2D (Convolution)
+
+\`\`\`python
+layer = layers.Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=(28, 28, 1))
+# 32 filters, 3x3 kernel
+\`\`\`
+
+## MaxPooling2D
+
+\`\`\`python
+layer = layers.MaxPooling2D(pool_size=(2, 2))
+# Halves spatial dimensions
+\`\`\`
+
+## Flatten and Dropout
+
+\`\`\`python
+layers.Flatten()  # (batch, h, w, c) -> (batch, h*w*c)
+layers.Dropout(0.5)  # Regularization
+\`\`\`
+
+## Example: Small CNN
+
+\`\`\`python
+model = keras.Sequential([
+    layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Flatten(),
+    layers.Dense(64, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(10, activation='softmax')
+])
+\`\`\``,
+
+  '13-training': `# Training: compile() and fit()
+
+Training a Keras model involves **compiling** (optimizer, loss, metrics) and **fitting** (running training on data).
+
+## compile()
+
+\`\`\`python
+model.compile(
+    optimizer='adam',
+    loss='sparse_categorical_crossentropy',
+    metrics=['accuracy']
+)
+\`\`\`
+
+- **optimizer**: 'adam', 'sgd', or an instance like \`keras.optimizers.Adam(0.001)\`
+- **loss**: 'mse', 'binary_crossentropy', 'sparse_categorical_crossentropy', etc.
+- **metrics**: list of metrics to log (e.g. ['accuracy'])
+
+## fit()
+
+\`\`\`python
+history = model.fit(
+    x_train, y_train,
+    batch_size=32,
+    epochs=10,
+    validation_data=(x_val, y_val),
+    verbose=1
+)
+\`\`\`
+
+\`history\` contains \`history.history\` (loss and metrics per epoch) for plotting.
+
+## Callbacks
+
+\`\`\`python
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+
+callbacks = [
+    EarlyStopping(patience=3, restore_best_weights=True),
+    ModelCheckpoint('best_model.keras', save_best_only=True)
+]
+model.fit(x_train, y_train, epochs=20, callbacks=callbacks)
+\`\`\``,
+
+  '13-cnn': `# Convolutional Neural Networks (CNN)
+
+CNNs are designed for grid-like data (images). They use **convolutional layers** to learn local patterns and **pooling** to reduce spatial size.
+
+## Why CNNs for Images?
+
+- **Local connectivity**: Each neuron sees a small region (receptive field)
+- **Weight sharing**: Same filter applied across the image
+- **Translation invariance**: Patterns detected regardless of position
+
+## Building a CNN for MNIST
+
+\`\`\`python
+from tensorflow.keras import layers, Sequential
+
+model = Sequential([
+    layers.Conv2D(32, (3, 3), activation='relu', input_shape=(28, 28, 1)),
+    layers.MaxPooling2D((2, 2)),
+    layers.Conv2D(64, (3, 3), activation='relu'),
+    layers.MaxPooling2D((2, 2)),
+    layers.Flatten(),
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(10, activation='softmax')
+])
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+\`\`\`
+
+## Data Augmentation
+
+\`\`\`python
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+datagen = ImageDataGenerator(rotation_range=15, width_shift_range=0.1, height_shift_range=0.1)
+# Use with model.fit(datagen.flow(x_train, y_train, batch_size=32), ...)
+\`\`\`
+
+CNNs are the backbone of image classification, object detection, and many vision tasks.`,
+
+  '13-save-load': `# Saving and Loading Models
+
+TensorFlow offers several ways to save and load models.
+
+## Save/Load Entire Model (Keras format)
+
+\`\`\`python
+# Save
+model.save('my_model.keras')
+
+# Load
+model = keras.models.load_model('my_model.keras')
+\`\`\`
+
+## Save Weights Only
+
+\`\`\`python
+model.save_weights('weights.ckpt')
+# Later, with same architecture:
+model.load_weights('weights.ckpt')
+\`\`\`
+
+## SavedModel (for deployment)
+
+\`\`\`python
+model.export('saved_model_dir')
+# Or: tf.saved_model.save(model, 'saved_model_dir')
+\`\`\`
+
+Loading a SavedModel:
+
+\`\`\`python
+loaded = tf.saved_model.load('saved_model_dir')
+\`\`\`
+
+Use \`.keras\` for development; use **SavedModel** for TensorFlow Serving or other runtimes.`,
+
+  '13-deployment': `# Deployment with TensorFlow Serving
+
+TensorFlow Serving is a flexible server for serving TensorFlow models in production.
+
+## Export for Serving
+
+\`\`\`python
+model.export('serving_model')
+# Or manually:
+tf.saved_model.save(model, 'serving_model/1')
+\`\`\`
+
+## Run TensorFlow Serving (Docker)
+
+\`\`\`bash
+docker run -p 8501:8501 \\
+  -v "/path/to/serving_model:/models/my_model" \\
+  -e MODEL_NAME=my_model \\
+  tensorflow/serving
+\`\`\`
+
+## REST Request
+
+\`\`\`python
+import requests
+import json
+
+url = 'http://localhost:8501/v1/models/my_model:predict'
+payload = {'instances': x_test[:3].tolist()}
+r = requests.post(url, json=payload)
+predictions = json.loads(r.text)['predictions']
+\`\`\`
+
+## TensorFlow Lite (Mobile)
+
+\`\`\`python
+converter = tf.lite.TFLiteConverter.from_keras_model(model)
+tflite_model = converter.convert()
+with open('model.tflite', 'wb') as f:
+    f.write(tflite_model)
+\`\`\`
+
+Choose Serving for servers, TFLite for mobile and edge devices.`,
+
+  // —— PyTorch (14) ——
+  '14-intro-pytorch': `# Introduction to PyTorch
+
+PyTorch is an open-source deep learning framework developed by Meta (Facebook). It is widely used in research and industry for its **dynamic computation graph**, Pythonic design, and strong GPU support.
+
+## Why PyTorch?
+
+- **Eager execution**: Build and run in a natural, imperative style
+- **Pythonic**: Feels like NumPy with automatic differentiation
+- **Research-friendly**: Easy to experiment and debug
+- **Ecosystem**: torchvision, torchaudio, Hugging Face integrations
+
+## Installation
+
+\`\`\`bash
+pip install torch torchvision
+\`\`\`
+
+## Your First Tensor
+
+\`\`\`python
+import torch
+
+x = torch.tensor([[1, 2], [3, 4]], dtype=torch.float32)
+print(x)
+print(x.shape)
+y = x + 1
+print(y)
+\`\`\`
+
+## GPU Support
+
+\`\`\`python
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+x = x.to(device)
+\`\`\`
+
+In the next articles you will learn autograd, nn.Module, and the training loop.`,
+
+  '14-tensors-autograd': `# Tensors and Autograd
+
+PyTorch tensors are similar to NumPy arrays but can live on GPU and support **automatic differentiation** via \`requires_grad=True\`.
+
+## Creating Tensors
+
+\`\`\`python
+import torch
+
+a = torch.tensor([1.0, 2.0, 3.0])
+b = torch.zeros(2, 3)
+c = torch.ones(2, 3)
+d = torch.randn(2, 3)
+\`\`\`
+
+## Autograd
+
+\`\`\`python
+x = torch.tensor([2.0], requires_grad=True)
+y = x ** 2 + 3 * x
+y.backward()
+print(x.grad)  # dy/dx at x=2
+\`\`\`
+
+## Gradients for Training
+
+\`\`\`python
+w = torch.randn(3, 2, requires_grad=True)
+loss = ((x @ w - target) ** 2).mean()
+loss.backward()
+# w.grad now holds gradients; optimizer.step() updates w
+\`\`\`
+
+## Common Operations
+
+\`\`\`python
+torch.matmul(a, b)
+a @ b
+a.sum(), a.mean(), a.max()
+a.reshape(2, 3)
+a.to(device)
+\`\`\``,
+
+  '14-nn-module': `# Building Models with nn.Module
+
+\`torch.nn.Module\` is the base class for all neural network modules. You define \`__init__\` (layers) and \`forward\` (computation).
+
+## Simple MLP
+
+\`\`\`python
+import torch.nn as nn
+
+class MLP(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = nn.Linear(784, 128)
+        self.fc2 = nn.Linear(128, 64)
+        self.fc3 = nn.Linear(64, 10)
+
+    def forward(self, x):
+        x = x.view(-1, 784)
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        return self.fc3(x)
+
+model = MLP()
+\`\`\`
+
+## Sequential
+
+\`\`\`python
+model = nn.Sequential(
+    nn.Linear(784, 128),
+    nn.ReLU(),
+    nn.Linear(128, 10)
+)
+\`\`\`
+
+## Parameters
+
+\`\`\`python
+for name, param in model.named_parameters():
+    print(name, param.shape)
+\`\`\``,
+
+  '14-training-loop': `# The Training Loop
+
+In PyTorch you write the training loop explicitly: forward pass, loss, backward, optimizer step.
+
+## Typical Loop
+
+\`\`\`python
+optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+criterion = nn.CrossEntropyLoss()
+
+model.train()
+for epoch in range(10):
+    for x_batch, y_batch in train_loader:
+        optimizer.zero_grad()
+        out = model(x_batch)
+        loss = criterion(out, y_batch)
+        loss.backward()
+        optimizer.step()
+\`\`\`
+
+## Validation
+
+\`\`\`python
+model.eval()
+with torch.no_grad():
+    for x_batch, y_batch in val_loader:
+        out = model(x_batch)
+        # compute accuracy, etc.
+\`\`\`
+
+## Device
+
+\`\`\`python
+model = model.to(device)
+x_batch, y_batch = x_batch.to(device), y_batch.to(device)
+\`\`\``,
+
+  '14-cnn-pytorch': `# Convolutional Networks in PyTorch
+
+\`\`\`python
+import torch.nn as nn
+
+class CNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(1, 32, 3)
+        self.pool = nn.MaxPool2d(2)
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.fc1 = nn.Linear(64 * 5 * 5, 128)
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x):
+        x = self.pool(nn.functional.relu(self.conv1(x)))
+        x = self.pool(nn.functional.relu(self.conv2(x)))
+        x = x.view(-1, 64 * 5 * 5)
+        x = nn.functional.relu(self.fc1(x))
+        return self.fc2(x)
+\`\`\`
+
+Use \`nn.Conv2d(in_channels, out_channels, kernel_size)\` and \`nn.MaxPool2d\`. Flatten before dense layers.`,
+
+  '14-transfer-learning': `# Transfer Learning
+
+Transfer learning reuses a pretrained model (e.g. ResNet) and fine-tunes it on your dataset.
+
+## Load Pretrained Model
+
+\`\`\`python
+from torchvision import models
+backbone = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1)
+# Replace final layer
+backbone.fc = nn.Linear(backbone.fc.in_features, num_classes)
+\`\`\`
+
+## Freeze Then Unfreeze
+
+\`\`\`python
+for param in backbone.parameters():
+    param.requires_grad = False
+backbone.fc = nn.Linear(backbone.fc.in_features, num_classes)
+# Train only backbone.fc, then unfreeze and fine-tune with small lr
+\`\`\``,
+
+  '14-checkpoints': `# Saving and Loading Checkpoints
+
+\`\`\`python
+# Save
+torch.save({
+    'epoch': epoch,
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'loss': loss,
+}, 'checkpoint.pt')
+
+# Load
+ckpt = torch.load('checkpoint.pt')
+model.load_state_dict(ckpt['model_state_dict'])
+optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+\`\`\`
+
+For inference only:
+
+\`\`\`python
+torch.save(model.state_dict(), 'model_weights.pt')
+model.load_state_dict(torch.load('model_weights.pt'))
+\`\`\``,
+
+  // —— Scikit-learn (15) ——
+  '15-intro-sklearn': `# Introduction to Scikit-learn
+
+Scikit-learn is the standard Python library for **classical** machine learning: classification, regression, clustering, and preprocessing. It is built on NumPy, SciPy, and matplotlib.
+
+## Design Principles
+
+- **Consistent API**: \`fit()\`, \`predict()\`, \`transform()\` across estimators
+- **Sensible defaults**: Works out of the box
+- **Composition**: Pipelines and model selection
+
+## Installation
+
+\`\`\`bash
+pip install scikit-learn
+\`\`\`
+
+## Minimal Example
+
+\`\`\`python
+from sklearn.datasets import load_iris
+from sklearn.model_selection import train_test_split
+from sklearn.neighbors import KNeighborsClassifier
+
+X, y = load_iris(return_X_y=True)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+clf = KNeighborsClassifier(n_neighbors=5)
+clf.fit(X_train, y_train)
+score = clf.score(X_test, y_test)
+\`\`\``,
+
+  '15-preprocessing': `# Data Preprocessing
+
+Preparing features before training: scaling, encoding, imputation.
+
+## StandardScaler
+
+\`\`\`python
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+\`\`\`
+
+## MinMaxScaler, OneHotEncoder
+
+\`\`\`python
+from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
+# MinMaxScaler: scale to [0, 1]
+# OneHotEncoder: categorical -> dummy variables
+\`\`\`
+
+## SimpleImputer
+
+\`\`\`python
+from sklearn.impute import SimpleImputer
+imp = SimpleImputer(strategy='mean')
+X_imputed = imp.fit_transform(X)
+\`\`\``,
+
+  '15-classification': `# Supervised Learning: Classification
+
+Common classifiers in scikit-learn.
+
+## Logistic Regression
+
+\`\`\`python
+from sklearn.linear_model import LogisticRegression
+clf = LogisticRegression(max_iter=1000)
+clf.fit(X_train, y_train)
+y_pred = clf.predict(X_test)
+\`\`\`
+
+## Random Forest, SVM
+
+\`\`\`python
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.svm import SVC
+clf = RandomForestClassifier(n_estimators=100)
+# clf = SVC(kernel='rbf')
+clf.fit(X_train, y_train)
+\`\`\`
+
+## Probability Estimates
+
+\`\`\`python
+proba = clf.predict_proba(X_test)
+\`\`\``,
+
+  '15-regression': `# Supervised Learning: Regression
+
+\`\`\`python
+from sklearn.linear_model import LinearRegression, Ridge
+from sklearn.ensemble import RandomForestRegressor
+
+# Linear
+reg = LinearRegression()
+reg.fit(X_train, y_train)
+
+# Regularized
+reg = Ridge(alpha=1.0)
+
+# Non-linear
+reg = RandomForestRegressor(n_estimators=100)
+reg.fit(X_train, y_train)
+y_pred = reg.predict(X_test)
+\`\`\``,
+
+  '15-metrics': `# Model Evaluation and Metrics
+
+## Classification
+
+\`\`\`python
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support, confusion_matrix
+
+accuracy_score(y_test, y_pred)
+precision_recall_fscore_support(y_test, y_pred, average='weighted')
+confusion_matrix(y_test, y_pred)
+\`\`\`
+
+## Regression
+
+\`\`\`python
+from sklearn.metrics import mean_squared_error, r2_score
+mean_squared_error(y_test, y_pred)
+r2_score(y_test, y_pred)
+\`\`\`
+
+## Cross-Validation
+
+\`\`\`python
+from sklearn.model_selection import cross_val_score
+scores = cross_val_score(clf, X, y, cv=5)
+\`\`\``,
+
+  '15-pipelines': `# Pipelines and Model Selection
+
+## Pipeline
+
+\`\`\`python
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+
+pipe = Pipeline([
+    ('scaler', StandardScaler()),
+    ('clf', SVC())
+])
+pipe.fit(X_train, y_train)
+pipe.predict(X_test)
+\`\`\`
+
+## GridSearchCV
+
+\`\`\`python
+from sklearn.model_selection import GridSearchCV
+param_grid = {'clf__C': [0.1, 1, 10], 'clf__gamma': ['scale', 'auto']}
+search = GridSearchCV(pipe, param_grid, cv=5)
+search.fit(X_train, y_train)
+print(search.best_params_)
+\`\`\``,
+
+  // —— OpenAI API (16) ——
+  '16-intro-openai': `# Introduction to the OpenAI API
+
+The OpenAI API provides access to language models (GPT-4, GPT-3.5) and embeddings. You send HTTP requests (or use the official SDK) with a prompt and receive text or embeddings.
+
+## Concepts
+
+- **Models**: e.g. gpt-4o, gpt-4o-mini, text-embedding-3-small
+- **API key**: Required in the \`Authorization\` header
+- **Tokens**: Input and output are billed by token count
+
+## Quick Example (Python)
+
+\`\`\`python
+from openai import OpenAI
+client = OpenAI(api_key="your-api-key")
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Say hello in one sentence."}]
+)
+print(response.choices[0].message.content)
+\`\`\`
+
+## REST Alternative
+
+\`\`\`
+POST https://api.openai.com/v1/chat/completions
+Authorization: Bearer YOUR_API_KEY
+Content-Type: application/json
+{"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "Hello"}]}
+\`\`\``,
+
+  '16-chat-completions': `# Chat Completions
+
+The Chat Completions API is used for conversational and single-turn text generation.
+
+## Message Roles
+
+- **system**: Sets behavior (e.g. "You are a helpful assistant.")
+- **user**: The human or application request
+- **assistant**: Model replies (include for few-shot or conversation history)
+
+## Basic Call
+
+\`\`\`python
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": "You are a coding tutor."},
+        {"role": "user", "content": "Explain a for loop in Python."}
+    ],
+    max_tokens=500,
+    temperature=0.7
+)
+text = response.choices[0].message.content
+\`\`\`
+
+## Multi-turn
+
+\`\`\`python
+messages = [
+    {"role": "user", "content": "What is 2+2?"},
+    {"role": "assistant", "content": "4."},
+    {"role": "user", "content": "Multiply that by 3."}
+]
+response = client.chat.completions.create(model="gpt-4o-mini", messages=messages)
+\`\`\``,
+
+  '16-embeddings': `# Embeddings and Similarity
+
+Embeddings turn text into fixed-size vectors. Use them for search, clustering, or as input to other models.
+
+## Getting Embeddings
+
+\`\`\`python
+response = client.embeddings.create(
+    model="text-embedding-3-small",
+    input="Your text here"
+)
+vector = response.data[0].embedding
+\`\`\`
+
+## Similarity (Cosine)
+
+\`\`\`python
+import numpy as np
+def cosine_similarity(a, b):
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+sim = cosine_similarity(vec1, vec2)
+\`\`\`
+
+## Use Cases
+
+- Semantic search: embed query and documents; rank by similarity
+- Clustering: k-means on embedding vectors
+- Classification: use embeddings as features for a small classifier`,
+
+  '16-best-practices': `# Best Practices and Prompting
+
+## Clear Instructions
+
+- Be specific: "List 3 bullet points" instead of "Tell me about X."
+- Specify format: JSON, markdown, code block.
+- Give examples (few-shot) when the task is nuanced.
+
+## System Message
+
+Use the system role to set tone, constraints, and output format so the model stays on task.
+
+## Temperature and max_tokens
+
+- **temperature**: Lower (0–0.3) for factual, deterministic output; higher for creativity.
+- **max_tokens**: Set to avoid runaway generation and control cost.
+
+## Security
+
+- Never log or expose API keys.
+- Sanitize user input before sending; don’t trust model output blindly in security-sensitive flows.`,
+
+  '16-rate-limits': `# Rate Limits and Error Handling
+
+## Rate Limits
+
+OpenAI enforces requests per minute (RPM) and tokens per minute (TPM). When exceeded, you get HTTP 429.
+
+## Retry with Backoff
+
+\`\`\`python
+import time
+def with_retry(fn, max_retries=3):
+    for i in range(max_retries):
+        try:
+            return fn()
+        except Exception as e:
+            if "429" in str(e) and i < max_retries - 1:
+                time.sleep(2 ** i)
+            else:
+                raise
+\`\`\`
+
+## Handle Errors
+
+- **429**: Rate limit — back off and retry.
+- **401**: Invalid or missing API key.
+- **500**: Server error — retry with backoff.
+
+Check the response body for \`error.code\` and \`error.message\` for details.`,
 };

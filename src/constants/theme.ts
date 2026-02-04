@@ -15,22 +15,22 @@ export const COLORS = {
   secondaryMuted: 'rgba(245, 158, 11, 0.15)',
 
   // Background hierarchy - subtle depth
-  background: '#0F172A',
-  backgroundCard: '#1E293B',
-  backgroundElevated: '#334155',
-  backgroundAuth: '#0F172A',
+  background: '#0C1222',
+  backgroundCard: '#161F33',
+  backgroundElevated: '#1E2A42',
+  backgroundAuth: '#0C1222',
   backgroundOverlay: 'rgba(15, 23, 42, 0.8)',
-
-  // Gradient accents - professional gradients
-  gradientAccent: ['#3B82F6', '#8B5CF6'] as [string, string],
+  // Gradients — used sparingly for primary CTAs only
   gradientPrimary: ['#3B82F6', '#2563EB'] as [string, string],
   gradientSecondary: ['#F59E0B', '#D97706'] as [string, string],
+  /** Alias for primary gradient (e.g. logo, one-off accent) */
+  gradientAccent: ['#3B82F6', '#2563EB'] as [string, string],
 
-  // Text hierarchy - improved contrast
+  // Text hierarchy - high contrast for visibility on dark backgrounds
   textPrimary: '#F8FAFC',
-  textSecondary: '#CBD5E1',
-  textMuted: '#94A3B8',
-  textDisabled: '#64748B',
+  textSecondary: '#E8EEF4',
+  textMuted: '#C2CEDC',
+  textDisabled: '#A8B8CC',
 
   // Borders - subtle and refined
   border: 'rgba(148, 163, 184, 0.08)',
@@ -41,13 +41,7 @@ export const COLORS = {
   // Code block styling
   codeBackground: '#0F172A',
   codeBorder: 'rgba(59, 130, 246, 0.15)',
-  codeText: '#E2E8F0',
-
-  // Accent colors
-  neonBlue: '#3B82F6',
-  neonYellow: '#FBBF24',
-  glowBlue: 'rgba(59, 130, 246, 0.25)',
-  glowYellow: 'rgba(245, 158, 11, 0.25)',
+  codeText: '#E8EEF4',
 
   // Status colors
   success: '#10B981',
@@ -70,11 +64,11 @@ export const SPACING = {
 } as const;
 
 export const BORDER_RADIUS = {
-  xs: 6,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
+  xs: 4,
+  sm: 6,
+  md: 8,
+  lg: 10,
+  xl: 12,
   full: 9999,
 } as const;
 
@@ -123,25 +117,11 @@ export const SHADOWS = {
     elevation: 6,
   },
   button: {
-    shadowColor: '#3B82F6',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  buttonPressed: {
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 4,
-    elevation: 2,
-  },
-  glow: {
-    shadowColor: '#3B82F6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 0,
+    elevation: 3,
   },
 } as const;
 
@@ -165,6 +145,7 @@ export const STORAGE_KEYS = {
   ONBOARDING_DONE: '@codeverse/onboarding_done',
   AUTH_TOKEN: '@codeverse/auth_token',
   LAST_READ_ARTICLE: '@codeverse/last_read_article',
+  COMPLETED_ARTICLES: '@codeverse/completed_articles',
   BOOKMARKS: '@codeverse/bookmarks',
   PENDING_OAUTH: '@codeverse/pending_oauth',
 } as const;

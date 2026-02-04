@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { NeonButton } from '../components/NeonButton';
 import { GradientIllustration } from '../components/GradientIllustration';
 import { useEmailAuth } from '../hooks/useEmailAuth';
@@ -91,21 +90,13 @@ export function LoginScreen({ navigation }: any) {
           >
             <View style={styles.content}>
               <View style={styles.logoSection}>
-                <LinearGradient
-                  colors={COLORS.gradientAccent}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.logoCircle}
-                >
+                <View style={styles.logoCircle}>
                   <Text style={styles.logoText}>CV</Text>
-                </LinearGradient>
-                <Text style={styles.title}>CodeVerse</Text>
-                <View style={styles.subtitleWrap}>
-                  <Text style={styles.subtitle}>
-                    Learn programming from basics to advance{'\n'}with articles & AI mentor
-                  </Text>
-                  <View style={styles.gradientUnderline} />
                 </View>
+                <Text style={styles.title}>CodeVerse</Text>
+                <Text style={styles.subtitle}>
+                  Learn programming with articles and AI mentor
+                </Text>
               </View>
 
               {mode === 'email' && (
@@ -250,14 +241,13 @@ const styles = StyleSheet.create({
   content: { alignItems: 'center', paddingHorizontal: SPACING.lg },
   logoSection: { alignItems: 'center', marginBottom: SPACING.xl },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 64,
+    height: 64,
+    borderRadius: BORDER_RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderFocus,
+    backgroundColor: COLORS.primary,
   },
   logoText: {
     fontSize: FONT_SIZES.xxl,
@@ -265,27 +255,19 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
   },
   title: {
-    fontSize: FONT_SIZES.hero,
+    fontSize: FONT_SIZES.title,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
-    letterSpacing: -0.5,
+    marginBottom: SPACING.xs,
+    letterSpacing: -0.4,
   },
-  subtitleWrap: { alignItems: 'center' },
   subtitle: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 24,
-  },
-  gradientUnderline: {
-    height: 2,
-    width: '70%',
-    marginTop: SPACING.sm,
-    borderRadius: 1,
-    backgroundColor: COLORS.primary,
-    opacity: 0.6,
+    lineHeight: 22,
+    marginBottom: SPACING.lg,
   },
   illustration: { marginVertical: SPACING.xl },
   errorBanner: {

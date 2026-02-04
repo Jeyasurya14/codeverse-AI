@@ -1,13 +1,16 @@
 import { ProgrammingLanguage, Article } from '../types';
 import { ARTICLE_CONTENT } from './articleContent';
 
+// Real programming logos (PNG) from skillicons.dev – works in React Native Image
+const SKILL_ICON = (id: string) => `https://skillicons.dev/icons?i=${id}&theme=dark`;
+
 export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
   // Programming Languages
   { 
     id: '1', 
     name: 'JavaScript', 
     slug: 'javascript', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/javascript/javascript-original.svg', 
+    icon: SKILL_ICON('js'), 
     description: 'Web and Node.js', 
     topicCount: 14, 
     category: 'language' 
@@ -16,7 +19,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '2', 
     name: 'Python', 
     slug: 'python', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/python/python-original.svg', 
+    icon: SKILL_ICON('py'), 
     description: 'General purpose & data', 
     topicCount: 14, 
     category: 'language' 
@@ -25,7 +28,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '3', 
     name: 'TypeScript', 
     slug: 'typescript', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/typescript/typescript-original.svg', 
+    icon: SKILL_ICON('ts'), 
     description: 'Typed JavaScript', 
     topicCount: 10, 
     category: 'language' 
@@ -34,7 +37,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '5', 
     name: 'Java', 
     slug: 'java', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/java/java-original.svg', 
+    icon: SKILL_ICON('java'), 
     description: 'Enterprise applications', 
     topicCount: 12, 
     category: 'language' 
@@ -43,7 +46,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '6', 
     name: 'C++', 
     slug: 'cpp', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/cplusplus/cplusplus-original.svg', 
+    icon: SKILL_ICON('cpp'), 
     description: 'System programming', 
     topicCount: 10, 
     category: 'language' 
@@ -52,7 +55,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '7', 
     name: 'Go', 
     slug: 'go', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/go/go-original.svg', 
+    icon: SKILL_ICON('go'), 
     description: 'Concurrent programming', 
     topicCount: 8, 
     category: 'language' 
@@ -63,7 +66,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '4', 
     name: 'React', 
     slug: 'react', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/react/react-original.svg', 
+    icon: SKILL_ICON('react'), 
     description: 'UI library', 
     topicCount: 8, 
     category: 'framework' 
@@ -72,7 +75,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '8', 
     name: 'Vue.js', 
     slug: 'vue', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/vuejs/vuejs-original.svg', 
+    icon: SKILL_ICON('vue'), 
     description: 'Progressive framework', 
     topicCount: 7, 
     category: 'framework' 
@@ -81,7 +84,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '9', 
     name: 'Angular', 
     slug: 'angular', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/angularjs/angularjs-original.svg', 
+    icon: SKILL_ICON('angular'), 
     description: 'Full-featured framework', 
     topicCount: 9, 
     category: 'framework' 
@@ -90,7 +93,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '10', 
     name: 'Next.js', 
     slug: 'nextjs', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/nextjs/nextjs-original.svg', 
+    icon: SKILL_ICON('nextjs'), 
     description: 'React framework', 
     topicCount: 6, 
     category: 'framework' 
@@ -99,7 +102,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '11', 
     name: 'Express.js', 
     slug: 'express', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/express/express-original.svg', 
+    icon: SKILL_ICON('express'), 
     description: 'Node.js framework', 
     topicCount: 5, 
     category: 'framework' 
@@ -108,7 +111,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '12', 
     name: 'Django', 
     slug: 'django', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/django/django-plain.svg', 
+    icon: SKILL_ICON('django'), 
     description: 'Python web framework', 
     topicCount: 7, 
     category: 'framework' 
@@ -119,7 +122,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '13', 
     name: 'TensorFlow', 
     slug: 'tensorflow', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/tensorflow/tensorflow-original.svg', 
+    icon: SKILL_ICON('tensorflow'), 
     description: 'Machine learning', 
     topicCount: 8, 
     category: 'aiml' 
@@ -128,7 +131,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '14', 
     name: 'PyTorch', 
     slug: 'pytorch', 
-    icon: 'https://cdn.jsdelivr.net/gh/devicons/devicon/icons/pytorch/pytorch-original.svg', 
+    icon: SKILL_ICON('pytorch'), 
     description: 'Deep learning', 
     topicCount: 7, 
     category: 'aiml' 
@@ -137,7 +140,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '15', 
     name: 'Scikit-learn', 
     slug: 'scikit-learn', 
-    icon: 'https://upload.wikimedia.org/wikipedia/commons/0/05/Scikit_learn_logo_small.svg', 
+    icon: SKILL_ICON('sklearn'), 
     description: 'ML algorithms', 
     topicCount: 6, 
     category: 'aiml' 
@@ -146,7 +149,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '16', 
     name: 'OpenAI API', 
     slug: 'openai', 
-    icon: 'https://upload.wikimedia.org/wikipedia/commons/0/04/ChatGPT_logo.svg', 
+    icon: SKILL_ICON('ai'), 
     description: 'AI integration', 
     topicCount: 5, 
     category: 'aiml' 
@@ -217,5 +220,40 @@ export const MOCK_ARTICLES: Record<string, Article[]> = {
     { id: '4-6', languageId: '4', title: 'Custom Hooks', slug: 'custom-hooks', level: 'intermediate', content: getContent('4', 'custom-hooks'), readTimeMinutes: 10, order: 6 },
     { id: '4-7', languageId: '4', title: 'Context API and Global State', slug: 'context', level: 'intermediate', content: getContent('4', 'context'), readTimeMinutes: 9, order: 7 },
     { id: '4-8', languageId: '4', title: 'Performance: memo, useMemo, useCallback', slug: 'performance', level: 'advanced', content: getContent('4', 'performance'), readTimeMinutes: 12, order: 8 },
+  ],
+  // —— AI & Machine Learning ——
+  '13': [
+    { id: '13-1', languageId: '13', title: 'Introduction to TensorFlow', slug: 'intro-tf', level: 'beginner', content: getContent('13', 'intro-tf'), readTimeMinutes: 8, order: 1 },
+    { id: '13-2', languageId: '13', title: 'Tensors and Operations', slug: 'tensors-ops', level: 'beginner', content: getContent('13', 'tensors-ops'), readTimeMinutes: 10, order: 2 },
+    { id: '13-3', languageId: '13', title: 'Keras API and Sequential Models', slug: 'keras-sequential', level: 'intermediate', content: getContent('13', 'keras-sequential'), readTimeMinutes: 12, order: 3 },
+    { id: '13-4', languageId: '13', title: 'Layers: Dense, Conv2D, Pooling', slug: 'layers', level: 'intermediate', content: getContent('13', 'layers'), readTimeMinutes: 11, order: 4 },
+    { id: '13-5', languageId: '13', title: 'Training: compile() and fit()', slug: 'training', level: 'intermediate', content: getContent('13', 'training'), readTimeMinutes: 10, order: 5 },
+    { id: '13-6', languageId: '13', title: 'Convolutional Neural Networks (CNN)', slug: 'cnn', level: 'advanced', content: getContent('13', 'cnn'), readTimeMinutes: 14, order: 6 },
+    { id: '13-7', languageId: '13', title: 'Saving and Loading Models', slug: 'save-load', level: 'intermediate', content: getContent('13', 'save-load'), readTimeMinutes: 7, order: 7 },
+    { id: '13-8', languageId: '13', title: 'Deployment with TensorFlow Serving', slug: 'deployment', level: 'advanced', content: getContent('13', 'deployment'), readTimeMinutes: 11, order: 8 },
+  ],
+  '14': [
+    { id: '14-1', languageId: '14', title: 'Introduction to PyTorch', slug: 'intro-pytorch', level: 'beginner', content: getContent('14', 'intro-pytorch'), readTimeMinutes: 8, order: 1 },
+    { id: '14-2', languageId: '14', title: 'Tensors and Autograd', slug: 'tensors-autograd', level: 'beginner', content: getContent('14', 'tensors-autograd'), readTimeMinutes: 10, order: 2 },
+    { id: '14-3', languageId: '14', title: 'Building Models with nn.Module', slug: 'nn-module', level: 'intermediate', content: getContent('14', 'nn-module'), readTimeMinutes: 11, order: 3 },
+    { id: '14-4', languageId: '14', title: 'The Training Loop', slug: 'training-loop', level: 'intermediate', content: getContent('14', 'training-loop'), readTimeMinutes: 12, order: 4 },
+    { id: '14-5', languageId: '14', title: 'Convolutional Networks in PyTorch', slug: 'cnn-pytorch', level: 'advanced', content: getContent('14', 'cnn-pytorch'), readTimeMinutes: 13, order: 5 },
+    { id: '14-6', languageId: '14', title: 'Transfer Learning', slug: 'transfer-learning', level: 'advanced', content: getContent('14', 'transfer-learning'), readTimeMinutes: 14, order: 6 },
+    { id: '14-7', languageId: '14', title: 'Saving and Loading Checkpoints', slug: 'checkpoints', level: 'intermediate', content: getContent('14', 'checkpoints'), readTimeMinutes: 7, order: 7 },
+  ],
+  '15': [
+    { id: '15-1', languageId: '15', title: 'Introduction to Scikit-learn', slug: 'intro-sklearn', level: 'beginner', content: getContent('15', 'intro-sklearn'), readTimeMinutes: 7, order: 1 },
+    { id: '15-2', languageId: '15', title: 'Data Preprocessing', slug: 'preprocessing', level: 'beginner', content: getContent('15', 'preprocessing'), readTimeMinutes: 10, order: 2 },
+    { id: '15-3', languageId: '15', title: 'Supervised Learning: Classification', slug: 'classification', level: 'intermediate', content: getContent('15', 'classification'), readTimeMinutes: 12, order: 3 },
+    { id: '15-4', languageId: '15', title: 'Supervised Learning: Regression', slug: 'regression', level: 'intermediate', content: getContent('15', 'regression'), readTimeMinutes: 10, order: 4 },
+    { id: '15-5', languageId: '15', title: 'Model Evaluation and Metrics', slug: 'metrics', level: 'intermediate', content: getContent('15', 'metrics'), readTimeMinutes: 11, order: 5 },
+    { id: '15-6', languageId: '15', title: 'Pipelines and Model Selection', slug: 'pipelines', level: 'advanced', content: getContent('15', 'pipelines'), readTimeMinutes: 12, order: 6 },
+  ],
+  '16': [
+    { id: '16-1', languageId: '16', title: 'Introduction to the OpenAI API', slug: 'intro-openai', level: 'beginner', content: getContent('16', 'intro-openai'), readTimeMinutes: 6, order: 1 },
+    { id: '16-2', languageId: '16', title: 'Chat Completions', slug: 'chat-completions', level: 'intermediate', content: getContent('16', 'chat-completions'), readTimeMinutes: 10, order: 2 },
+    { id: '16-3', languageId: '16', title: 'Embeddings and Similarity', slug: 'embeddings', level: 'intermediate', content: getContent('16', 'embeddings'), readTimeMinutes: 9, order: 3 },
+    { id: '16-4', languageId: '16', title: 'Best Practices and Prompting', slug: 'best-practices', level: 'intermediate', content: getContent('16', 'best-practices'), readTimeMinutes: 8, order: 4 },
+    { id: '16-5', languageId: '16', title: 'Rate Limits and Error Handling', slug: 'rate-limits', level: 'advanced', content: getContent('16', 'rate-limits'), readTimeMinutes: 7, order: 5 },
   ],
 };

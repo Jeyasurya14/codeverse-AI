@@ -59,7 +59,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     marginRight: SPACING.md,
   },
-  textWrap: { flex: 1 },
+  textWrap: { flex: 1, minWidth: 0 },
   title: {
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.primary,
