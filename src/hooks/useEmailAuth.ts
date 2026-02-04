@@ -27,10 +27,16 @@ export function useEmailAuth() {
     }
   };
 
-  const login = async (email: string, password: string, rememberMe = false) => {
+  const login = async (email: string, password: string, rememberMe = false, mfaCode?: string) => {
     setIsLoading(true);
     try {
-      const result = await loginEmail(email, password, rememberMe);
+      const result = await loginEmail(email, password, rememberMe, mfaCode);
+      
+      // Check if MFA is required
+      if (result.requiresMfa) {
+        return { success: false, requiresMfa: true };
+      }
+      
       await signIn(result.user, {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
@@ -39,7 +45,10 @@ export function useEmailAuth() {
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
-      Alert.alert('Login Failed', message);
+      // Don't show alert for MFA requirement
+      if (!message.includes('MFA')) {
+        Alert.alert('Login Failed', message);
+      }
       return { success: false, error: message };
     } finally {
       setIsLoading(false);

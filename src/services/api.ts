@@ -135,12 +135,12 @@ export async function registerEmail(email: string, password: string, name?: stri
   );
 }
 
-export async function loginEmail(email: string, password: string, rememberMe = false) {
-  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'email' }; accessToken: string; refreshToken: string; expiresAt?: string }>(
+export async function loginEmail(email: string, password: string, rememberMe = false, mfaCode?: string) {
+  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean }; accessToken: string; refreshToken: string; expiresAt?: string; requiresMfa?: boolean }>(
     '/auth/login',
     {
       method: 'POST',
-      body: JSON.stringify({ email, password, rememberMe }),
+      body: JSON.stringify({ email, password, rememberMe, mfaCode }),
     }
   );
 }

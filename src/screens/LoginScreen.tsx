@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NeonButton } from '../components/NeonButton';
 import { GradientIllustration } from '../components/GradientIllustration';
-import { useGoogleAuth, useGithubAuth } from '../hooks/useOAuth';
 import { useEmailAuth } from '../hooks/useEmailAuth';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
 
@@ -12,7 +11,6 @@ const FRIENDLY_MESSAGES: Record<string, string> = {
   'Request timed out. Try again.': 'Connection timed out. Check your network and try again.',
   'Network error. Check your connection.': 'No connection. Check Wi‑Fi or mobile data and try again.',
   'App is not configured. Please update and restart.': 'Sign-in is not set up yet. Please try again later.',
-  'Google sign-in failed. Try again.': 'Google sign-in failed. Make sure the app is allowed in Google Console and try again.',
 };
 
 function getFriendlyMessage(e: unknown): string {
@@ -21,40 +19,16 @@ function getFriendlyMessage(e: unknown): string {
 }
 
 export function LoginScreen({ navigation }: any) {
-  const [mode, setMode] = useState<'oauth' | 'email' | 'magic'>('oauth');
-  const [loading, setLoading] = useState<'google' | 'github' | 'email' | 'magic' | null>(null);
+  const [mode, setMode] = useState<'email' | 'magic' | 'mfa'>('email');
+  const [loading, setLoading] = useState<'email' | 'magic' | 'mfa' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [requiresMfa, setRequiresMfa] = useState(false);
 
-  const { runGoogleSignIn, ready: googleReady } = useGoogleAuth();
-  const { runGithubSignIn, ready: githubReady } = useGithubAuth();
   const { login, sendMagicLink, isLoading: emailLoading } = useEmailAuth();
-
-  const handleGoogleSignIn = async () => {
-    setError(null);
-    setLoading('google');
-    try {
-      await runGoogleSignIn();
-    } catch (e) {
-      setError(getFriendlyMessage(e));
-    } finally {
-      setLoading(null);
-    }
-  };
-
-  const handleGithubSignIn = async () => {
-    setError(null);
-    setLoading('github');
-    try {
-      await runGithubSignIn();
-    } catch (e) {
-      setError(getFriendlyMessage(e));
-    } finally {
-      setLoading(null);
-    }
-  };
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {
@@ -63,9 +37,26 @@ export function LoginScreen({ navigation }: any) {
     }
     setError(null);
     setLoading('email');
-    const result = await login(email.trim(), password, rememberMe);
-    if (!result.success) {
+    const result = await login(email.trim(), password, rememberMe, mfaCode || undefined);
+    if (result.requiresMfa) {
+      setRequiresMfa(true);
+      setMode('mfa');
+    } else if (!result.success) {
       setError(result.error || 'Login failed.');
+    }
+    setLoading(null);
+  };
+
+  const handleMfaLogin = async () => {
+    if (!mfaCode.trim()) {
+      setError('Please enter MFA code.');
+      return;
+    }
+    setError(null);
+    setLoading('mfa');
+    const result = await login(email.trim(), password, rememberMe, mfaCode.trim());
+    if (!result.success) {
+      setError(result.error || 'Invalid MFA code.');
     }
     setLoading(null);
   };
@@ -79,7 +70,7 @@ export function LoginScreen({ navigation }: any) {
     setLoading('magic');
     const result = await sendMagicLink(email.trim());
     if (result.success) {
-      setMode('oauth'); // Switch back to OAuth view after sending
+      setMode('email'); // Switch back to email view after sending
     } else {
       setError(result.error || 'Failed to send magic link.');
     }
@@ -116,55 +107,6 @@ export function LoginScreen({ navigation }: any) {
                   <View style={styles.gradientUnderline} />
                 </View>
               </View>
-
-              {mode === 'oauth' && (
-                <>
-                  <View style={styles.illustration}>
-                    <GradientIllustration />
-                  </View>
-
-                  {error ? (
-                    <View style={styles.errorBanner}>
-                      <Text style={styles.errorText}>{error}</Text>
-                      <Text style={styles.errorHint}>Close any browser tab and try again, or check your connection.</Text>
-                    </View>
-                  ) : null}
-                  <View style={styles.buttons}>
-                    <NeonButton
-                      title="Continue with Google"
-                      onPress={handleGoogleSignIn}
-                      loading={loading === 'google'}
-                      disabled={!googleReady}
-                      pill
-                      style={styles.btn}
-                    />
-                    <NeonButton
-                      title="Continue with GitHub"
-                      onPress={handleGithubSignIn}
-                      variant="gradientBorder"
-                      loading={loading === 'github'}
-                      disabled={!githubReady}
-                      pill
-                      style={styles.btn}
-                    />
-                    <View style={styles.divider}>
-                      <View style={styles.dividerLine} />
-                      <Text style={styles.dividerText}>OR</Text>
-                      <View style={styles.dividerLine} />
-                    </View>
-                    <NeonButton
-                      title="Sign in with Email"
-                      onPress={() => setMode('email')}
-                      variant="outline"
-                      pill
-                      style={styles.btn}
-                    />
-                    <TouchableOpacity onPress={() => setMode('magic')}>
-                      <Text style={styles.magicLinkText}>Use magic link instead</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
 
               {mode === 'email' && (
                 <>
@@ -215,9 +157,6 @@ export function LoginScreen({ navigation }: any) {
                     <TouchableOpacity onPress={() => navigation?.navigate('Register')}>
                       <Text style={styles.switchText}>Don't have an account? <Text style={styles.switchLink}>Sign up</Text></Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setMode('oauth')}>
-                      <Text style={styles.backText}>← Back to OAuth</Text>
-                    </TouchableOpacity>
                   </View>
                 </>
               )}
@@ -252,8 +191,39 @@ export function LoginScreen({ navigation }: any) {
                     <TouchableOpacity onPress={() => setMode('email')}>
                       <Text style={styles.switchText}>Use password instead</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setMode('oauth')}>
-                      <Text style={styles.backText}>← Back to OAuth</Text>
+                  </View>
+                </>
+              )}
+
+              {mode === 'mfa' && (
+                <>
+                  {error ? (
+                    <View style={styles.errorBanner}>
+                      <Text style={styles.errorText}>{error}</Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.form}>
+                    <Text style={styles.magicTitle}>Two-Factor Authentication</Text>
+                    <Text style={styles.magicDesc}>Enter the 6-digit code from your authenticator app.</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="MFA Code"
+                      placeholderTextColor={COLORS.textMuted}
+                      value={mfaCode}
+                      onChangeText={setMfaCode}
+                      keyboardType="number-pad"
+                      maxLength={6}
+                      autoFocus
+                    />
+                    <NeonButton
+                      title="Verify & Sign In"
+                      onPress={handleMfaLogin}
+                      loading={loading === 'mfa' || emailLoading}
+                      pill
+                      style={styles.btn}
+                    />
+                    <TouchableOpacity onPress={() => { setMode('email'); setMfaCode(''); setRequiresMfa(false); }}>
+                      <Text style={styles.switchText}>← Back to login</Text>
                     </TouchableOpacity>
                   </View>
                 </>

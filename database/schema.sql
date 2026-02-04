@@ -1,16 +1,26 @@
 -- CodeVerse PostgreSQL schema
 -- Run this against your PostgreSQL database when setting up the backend.
 
--- Users (OAuth: Google/GitHub, or Email/Password)
+-- Users (Email/Password with enterprise security)
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  provider_id VARCHAR(255) UNIQUE, -- NULL for email users, unique for OAuth
   email VARCHAR(255) NOT NULL UNIQUE,
   name VARCHAR(255),
   avatar_url TEXT,
-  password_hash VARCHAR(255), -- NULL for OAuth users, bcrypt hash for email users
+  password_hash VARCHAR(255) NOT NULL, -- bcrypt hash
   email_verified BOOLEAN DEFAULT FALSE,
-  provider VARCHAR(50) NOT NULL CHECK (provider IN ('google', 'github', 'email')),
+  email_verification_token VARCHAR(255),
+  email_verification_expires_at TIMESTAMPTZ,
+  mfa_enabled BOOLEAN DEFAULT FALSE,
+  mfa_secret VARCHAR(255), -- TOTP secret (encrypted)
+  mfa_backup_codes TEXT[], -- Backup codes for MFA
+  failed_login_attempts INT DEFAULT 0,
+  account_locked_until TIMESTAMPTZ,
+  last_login_at TIMESTAMPTZ,
+  password_changed_at TIMESTAMPTZ DEFAULT NOW(),
+  password_reset_token VARCHAR(255),
+  password_reset_expires_at TIMESTAMPTZ,
+  provider VARCHAR(50) NOT NULL DEFAULT 'email' CHECK (provider = 'email'),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -113,3 +123,46 @@ CREATE TABLE IF NOT EXISTS magic_link_tokens (
 CREATE INDEX idx_magic_link_tokens_token ON magic_link_tokens(token);
 CREATE INDEX idx_magic_link_tokens_email ON magic_link_tokens(email);
 CREATE INDEX idx_magic_link_tokens_expires ON magic_link_tokens(expires_at);
+
+-- Security audit logs (enterprise-grade tracking)
+CREATE TABLE IF NOT EXISTS security_audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  event_type VARCHAR(50) NOT NULL, -- 'login_success', 'login_failed', 'mfa_enabled', 'password_changed', etc.
+  ip_address INET,
+  user_agent TEXT,
+  details JSONB,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_security_audit_user ON security_audit_logs(user_id);
+CREATE INDEX idx_security_audit_event ON security_audit_logs(event_type);
+CREATE INDEX idx_security_audit_created ON security_audit_logs(created_at);
+
+-- Email verification tokens
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token VARCHAR(255) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_email_verification_token ON email_verification_tokens(token);
+CREATE INDEX idx_email_verification_user ON email_verification_tokens(user_id);
+CREATE INDEX idx_email_verification_expires ON email_verification_tokens(expires_at);
+
+-- Password reset tokens
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token VARCHAR(255) NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_password_reset_token ON password_reset_tokens(token);
+CREATE INDEX idx_password_reset_user ON password_reset_tokens(user_id);
+CREATE INDEX idx_password_reset_expires ON password_reset_tokens(expires_at);

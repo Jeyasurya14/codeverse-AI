@@ -14,6 +14,8 @@ const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const { authenticator } = require('otplib');
+const QRCode = require('qrcode');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
@@ -139,22 +141,70 @@ async function findUserByProviderId(providerId, provider) {
   return result.rows[0] || null;
 }
 
-async function createUser({ email, name, avatarUrl, provider, providerId = null, passwordHash = null }) {
+async function createUser({ email, name, passwordHash }) {
   if (!pool) {
-    // Mock for dev without DB
-    return { id: `mock-${Date.now()}`, email, name, avatar_url: avatarUrl, provider, email_verified: false };
+    return { id: `mock-${Date.now()}`, email, name, email_verified: false, provider: 'email' };
   }
+  const emailVerificationToken = crypto.randomBytes(32).toString('hex');
+  const emailVerificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
   const result = await pool.query(
-    `INSERT INTO users (email, name, avatar_url, provider, provider_id, password_hash, email_verified)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (email) DO UPDATE SET
-       name = COALESCE(EXCLUDED.name, users.name),
-       avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url),
-       updated_at = NOW()
+    `INSERT INTO users (email, name, password_hash, provider, email_verification_token, email_verification_expires_at)
+     VALUES ($1, $2, $3, 'email', $4, $5)
+     ON CONFLICT (email) DO NOTHING
      RETURNING *`,
-    [email.toLowerCase().trim(), name, avatarUrl, provider, providerId, passwordHash, provider === 'email' ? false : true]
+    [email.toLowerCase().trim(), name, passwordHash, emailVerificationToken, emailVerificationExpires]
+  );
+  if (result.rows.length === 0) {
+    throw new Error('Email already registered');
+  }
+  return result.rows[0];
+}
+
+async function logSecurityEvent(userId, eventType, ipAddress, userAgent, details = {}) {
+  if (!pool) return;
+  try {
+    await pool.query(
+      `INSERT INTO security_audit_logs (user_id, event_type, ip_address, user_agent, details)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, eventType, ipAddress, userAgent, JSON.stringify(details)]
+    );
+  } catch (e) {
+    if (!isProduction) console.error('Failed to log security event:', e);
+  }
+}
+
+async function checkAccountLocked(user) {
+  if (!user.account_locked_until) return false;
+  return new Date(user.account_locked_until) > new Date();
+}
+
+async function incrementFailedLoginAttempts(userId) {
+  if (!pool) return;
+  const result = await pool.query(
+    `UPDATE users 
+     SET failed_login_attempts = failed_login_attempts + 1,
+         account_locked_until = CASE 
+           WHEN failed_login_attempts + 1 >= 5 THEN NOW() + INTERVAL '30 minutes'
+           ELSE account_locked_until
+         END
+     WHERE id = $1
+     RETURNING failed_login_attempts, account_locked_until`,
+    [userId]
   );
   return result.rows[0];
+}
+
+async function resetFailedLoginAttempts(userId) {
+  if (!pool) return;
+  await pool.query(
+    'UPDATE users SET failed_login_attempts = 0, account_locked_until = NULL WHERE id = $1',
+    [userId]
+  );
+}
+
+async function updateLastLogin(userId) {
+  if (!pool) return;
+  await pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [userId]);
 }
 
 async function createRefreshToken(userId, expiresAt) {
@@ -533,13 +583,33 @@ app.post('/auth/register', authLimiter, async (req, res) => {
       return res.status(409).json({ message: 'Email already registered.' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12); // Higher cost for better security
     const user = await createUser({
       email,
       name: name || email.split('@')[0],
-      provider: 'email',
       passwordHash,
     });
+
+    // Send email verification
+    if (emailTransporter && user.email_verification_token) {
+      const verificationUrl = `${APP_URL}/auth/verify-email?token=${user.email_verification_token}`;
+      await emailTransporter.sendMail({
+        from: EMAIL_FROM,
+        to: user.email,
+        subject: 'Verify your CodeVerse account',
+        html: `
+          <h2>Welcome to CodeVerse!</h2>
+          <p>Please verify your email address by clicking the link below:</p>
+          <p><a href="${verificationUrl}" style="display:inline-block;padding:12px 24px;background:#6c9eff;color:#fff;text-decoration:none;border-radius:8px;">Verify Email</a></p>
+          <p>Or copy this URL: ${verificationUrl}</p>
+          <p>This link expires in 24 hours.</p>
+        `,
+      });
+    }
+
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('user-agent') || '';
+    await logSecurityEvent(user.id, 'user_registered', ipAddress, userAgent);
 
     const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, false);
     return res.json({
@@ -549,6 +619,7 @@ app.post('/auth/register', authLimiter, async (req, res) => {
         name: user.name,
         avatar: user.avatar_url,
         provider: user.provider,
+        emailVerified: user.email_verified,
       },
       accessToken,
       refreshToken,
@@ -564,24 +635,71 @@ app.post('/auth/register', authLimiter, async (req, res) => {
 
 /**
  * POST /auth/login
- * Body: { email: string, password: string, rememberMe?: boolean }
+ * Body: { email: string, password: string, rememberMe?: boolean, mfaCode?: string }
+ * Enterprise-grade login with account lockout, MFA, and security logging
  */
 app.post('/auth/login', authLimiter, async (req, res) => {
   try {
-    const { email, password, rememberMe } = req.body || {};
+    const { email, password, rememberMe, mfaCode } = req.body || {};
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('user-agent') || '';
+
     if (!email || !password) {
       return res.status(400).json({ message: 'Email and password are required.' });
     }
 
     const user = await findUserByEmail(email);
-    if (!user || user.provider !== 'email' || !user.password_hash) {
+    if (!user || !user.password_hash) {
+      // Don't reveal if user exists - security best practice
+      await logSecurityEvent(null, 'login_failed', ipAddress, userAgent, { email, reason: 'invalid_credentials' });
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
 
+    // Check if account is locked
+    if (await checkAccountLocked(user)) {
+      await logSecurityEvent(user.id, 'login_blocked', ipAddress, userAgent, { reason: 'account_locked' });
+      return res.status(423).json({ 
+        message: 'Account is temporarily locked due to multiple failed login attempts. Please try again later.',
+        lockedUntil: user.account_locked_until
+      });
+    }
+
+    // Verify password
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
+      await incrementFailedLoginAttempts(user.id);
+      await logSecurityEvent(user.id, 'login_failed', ipAddress, userAgent, { reason: 'invalid_password' });
       return res.status(401).json({ message: 'Invalid email or password.' });
     }
+
+    // Check MFA if enabled
+    if (user.mfa_enabled) {
+      if (!mfaCode) {
+        return res.status(200).json({ 
+          requiresMfa: true,
+          message: 'MFA code required.'
+        });
+      }
+
+      const isValidMfa = authenticator.verify({ token: mfaCode, secret: user.mfa_secret });
+      if (!isValidMfa) {
+        // Check backup codes
+        const backupCodes = user.mfa_backup_codes || [];
+        const codeIndex = backupCodes.indexOf(mfaCode);
+        if (codeIndex === -1) {
+          await logSecurityEvent(user.id, 'mfa_failed', ipAddress, userAgent);
+          return res.status(401).json({ message: 'Invalid MFA code.' });
+        }
+        // Remove used backup code
+        backupCodes.splice(codeIndex, 1);
+        await pool.query('UPDATE users SET mfa_backup_codes = $1 WHERE id = $2', [backupCodes, user.id]);
+      }
+    }
+
+    // Successful login
+    await resetFailedLoginAttempts(user.id);
+    await updateLastLogin(user.id);
+    await logSecurityEvent(user.id, 'login_success', ipAddress, userAgent);
 
     const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, !!rememberMe);
     return res.json({
@@ -591,6 +709,7 @@ app.post('/auth/login', authLimiter, async (req, res) => {
         name: user.name,
         avatar: user.avatar_url,
         provider: user.provider,
+        mfaEnabled: user.mfa_enabled,
       },
       accessToken,
       refreshToken,
@@ -721,14 +840,406 @@ app.post('/auth/refresh', authLimiter, async (req, res) => {
 app.post('/auth/logout', authLimiter, async (req, res) => {
   try {
     const { refreshToken } = req.body || {};
-    if (refreshToken && typeof refreshToken === 'string') {
-      await deleteRefreshToken(refreshToken);
+    const ipAddress = req.ip || req.connection.remoteAddress;
+    const userAgent = req.get('user-agent') || '';
+    
+    // Get user from token if available
+    let userId = null;
+    if (refreshToken) {
+      const tokenRecord = await findRefreshToken(refreshToken);
+      if (tokenRecord) {
+        userId = tokenRecord.user_id;
+        await deleteRefreshToken(refreshToken);
+      }
     }
+    
+    if (userId) {
+      await logSecurityEvent(userId, 'logout', ipAddress, userAgent);
+    }
+    
     return res.json({ message: 'Logged out successfully.' });
   } catch (err) {
     if (!isProduction) console.error('/auth/logout error:', err);
     res.status(500).json({
       message: isProduction ? 'Logout failed.' : (err.message || 'Logout failed.'),
+    });
+  }
+});
+
+/**
+ * GET /auth/verify-email?token=...
+ * Verify email address
+ */
+app.get('/auth/verify-email', async (req, res) => {
+  try {
+    const { token } = req.query;
+    if (!token || typeof token !== 'string') {
+      return res.status(400).send('Missing verification token.');
+    }
+
+    if (!pool) {
+      return res.status(503).send('Database not configured.');
+    }
+
+    const result = await pool.query(
+      `SELECT * FROM users 
+       WHERE email_verification_token = $1 
+       AND email_verification_expires_at > NOW() 
+       AND email_verified = FALSE`,
+      [token]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(400).send('Invalid or expired verification token.');
+    }
+
+    const user = result.rows[0];
+    await pool.query(
+      `UPDATE users 
+       SET email_verified = TRUE, 
+           email_verification_token = NULL,
+           email_verification_expires_at = NULL
+       WHERE id = $1`,
+      [user.id]
+    );
+
+    await logSecurityEvent(user.id, 'email_verified', req.ip, req.get('user-agent'));
+
+    return res.send(`
+      <html>
+        <head><title>Email Verified</title></head>
+        <body style="font-family:system-ui;text-align:center;padding:40px;">
+          <h1>Email Verified Successfully!</h1>
+          <p>Your email has been verified. You can now close this window and return to the app.</p>
+        </body>
+      </html>
+    `);
+  } catch (err) {
+    if (!isProduction) console.error('/auth/verify-email error:', err);
+    res.status(500).send('Email verification failed.');
+  }
+});
+
+/**
+ * POST /auth/mfa/setup
+ * Generate MFA secret and QR code
+ * Requires authentication
+ */
+app.post('/auth/mfa/setup', authLimiter, async (req, res) => {
+  try {
+    // Get user from JWT token
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const user = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.sub]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const currentUser = user.rows[0];
+    if (currentUser.mfa_enabled) {
+      return res.status(400).json({ message: 'MFA is already enabled.' });
+    }
+
+    // Generate MFA secret
+    const mfaSecret = authenticator.generateSecret();
+    const serviceName = 'CodeVerse';
+    const accountName = currentUser.email;
+    const otpAuthUrl = authenticator.keyuri(accountName, serviceName, mfaSecret);
+
+    // Generate QR code
+    const qrCodeUrl = await QRCode.toDataURL(otpAuthUrl);
+
+    // Generate backup codes
+    const backupCodes = Array.from({ length: 10 }, () => 
+      crypto.randomBytes(4).toString('hex').toUpperCase()
+    );
+
+    // Store secret temporarily (user needs to verify before enabling)
+    await pool.query(
+      `UPDATE users 
+       SET mfa_secret = $1, 
+           mfa_backup_codes = $2
+       WHERE id = $3`,
+      [mfaSecret, backupCodes, currentUser.id]
+    );
+
+    await logSecurityEvent(currentUser.id, 'mfa_setup_initiated', req.ip, req.get('user-agent'));
+
+    return res.json({
+      secret: mfaSecret,
+      qrCodeUrl,
+      backupCodes,
+      message: 'Scan QR code with authenticator app and verify to enable MFA.',
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/mfa/setup error:', err);
+    res.status(500).json({
+      message: isProduction ? 'MFA setup failed.' : (err.message || 'MFA setup failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/mfa/verify
+ * Verify MFA code and enable MFA
+ * Requires authentication
+ */
+app.post('/auth/mfa/verify', authLimiter, async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const { mfaCode } = req.body || {};
+    if (!mfaCode || typeof mfaCode !== 'string') {
+      return res.status(400).json({ message: 'MFA code is required.' });
+    }
+
+    const user = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.sub]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const currentUser = user.rows[0];
+    if (!currentUser.mfa_secret) {
+      return res.status(400).json({ message: 'MFA setup not initiated. Call /auth/mfa/setup first.' });
+    }
+
+    const isValid = authenticator.verify({ token: mfaCode, secret: currentUser.mfa_secret });
+    if (!isValid) {
+      await logSecurityEvent(currentUser.id, 'mfa_verification_failed', req.ip, req.get('user-agent'));
+      return res.status(401).json({ message: 'Invalid MFA code.' });
+    }
+
+    // Enable MFA
+    await pool.query(
+      'UPDATE users SET mfa_enabled = TRUE WHERE id = $1',
+      [currentUser.id]
+    );
+
+    await logSecurityEvent(currentUser.id, 'mfa_enabled', req.ip, req.get('user-agent'));
+
+    return res.json({
+      message: 'MFA enabled successfully.',
+      backupCodes: currentUser.mfa_backup_codes,
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/mfa/verify error:', err);
+    res.status(500).json({
+      message: isProduction ? 'MFA verification failed.' : (err.message || 'MFA verification failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/mfa/disable
+ * Disable MFA
+ * Requires authentication
+ */
+app.post('/auth/mfa/disable', authLimiter, async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+
+    const { password, mfaCode } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required to disable MFA.' });
+    }
+
+    const user = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.sub]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const currentUser = user.rows[0];
+    
+    // Verify password
+    const validPassword = await bcrypt.compare(password, currentUser.password_hash);
+    if (!validPassword) {
+      await logSecurityEvent(currentUser.id, 'mfa_disable_failed', req.ip, req.get('user-agent'), { reason: 'invalid_password' });
+      return res.status(401).json({ message: 'Invalid password.' });
+    }
+
+    // Verify MFA if enabled
+    if (currentUser.mfa_enabled && currentUser.mfa_secret) {
+      if (!mfaCode) {
+        return res.status(400).json({ message: 'MFA code is required.' });
+      }
+      const isValidMfa = authenticator.verify({ token: mfaCode, secret: currentUser.mfa_secret });
+      if (!isValidMfa) {
+        await logSecurityEvent(currentUser.id, 'mfa_disable_failed', req.ip, req.get('user-agent'), { reason: 'invalid_mfa' });
+        return res.status(401).json({ message: 'Invalid MFA code.' });
+      }
+    }
+
+    // Disable MFA
+    await pool.query(
+      `UPDATE users 
+       SET mfa_enabled = FALSE, 
+           mfa_secret = NULL,
+           mfa_backup_codes = NULL
+       WHERE id = $1`,
+      [currentUser.id]
+    );
+
+    await logSecurityEvent(currentUser.id, 'mfa_disabled', req.ip, req.get('user-agent'));
+
+    return res.json({ message: 'MFA disabled successfully.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/mfa/disable error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to disable MFA.' : (err.message || 'Failed to disable MFA.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/password/reset-request
+ * Request password reset
+ */
+app.post('/auth/password/reset-request', authLimiter, async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ message: 'Valid email is required.' });
+    }
+
+    const user = await findUserByEmail(email);
+    if (!user) {
+      // Don't reveal if user exists
+      return res.json({ message: 'If the email exists, a password reset link has been sent.' });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await pool.query(
+      `INSERT INTO password_reset_tokens (user_id, token, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, resetToken, expiresAt]
+    );
+
+    if (emailTransporter) {
+      const resetUrl = `${APP_URL}/auth/password/reset?token=${resetToken}`;
+      await emailTransporter.sendMail({
+        from: EMAIL_FROM,
+        to: user.email,
+        subject: 'Reset your CodeVerse password',
+        html: `
+          <h2>Password Reset Request</h2>
+          <p>Click the link below to reset your password (expires in 1 hour):</p>
+          <p><a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#6c9eff;color:#fff;text-decoration:none;border-radius:8px;">Reset Password</a></p>
+          <p>Or copy this URL: ${resetUrl}</p>
+          <p>If you didn't request this, you can safely ignore this email.</p>
+        `,
+      });
+    }
+
+    await logSecurityEvent(user.id, 'password_reset_requested', req.ip, req.get('user-agent'));
+
+    return res.json({ message: 'If the email exists, a password reset link has been sent.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/password/reset-request error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to send reset link.' : (err.message || 'Failed to send reset link.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/password/reset
+ * Reset password with token
+ */
+app.post('/auth/password/reset', authLimiter, async (req, res) => {
+  try {
+    const { token, password } = req.body || {};
+    if (!token || !password) {
+      return res.status(400).json({ message: 'Token and password are required.' });
+    }
+
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).json({ message: 'Password must contain uppercase, lowercase, and a number.' });
+    }
+
+    const tokenResult = await pool.query(
+      `SELECT prt.*, u.id as user_id 
+       FROM password_reset_tokens prt
+       JOIN users u ON prt.user_id = u.id
+       WHERE prt.token = $1 
+       AND prt.expires_at > NOW() 
+       AND prt.used = FALSE`,
+      [token]
+    );
+
+    if (tokenResult.rows.length === 0) {
+      return res.status(400).json({ message: 'Invalid or expired reset token.' });
+    }
+
+    const tokenRecord = tokenResult.rows[0];
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    // Update password and invalidate token
+    await pool.query(
+      `UPDATE users 
+       SET password_hash = $1, 
+           password_changed_at = NOW(),
+           failed_login_attempts = 0,
+           account_locked_until = NULL
+       WHERE id = $2`,
+      [passwordHash, tokenRecord.user_id]
+    );
+
+    await pool.query(
+      'UPDATE password_reset_tokens SET used = TRUE WHERE token = $1',
+      [token]
+    );
+
+    // Invalidate all refresh tokens for security
+    await pool.query(
+      'DELETE FROM refresh_tokens WHERE user_id = $1',
+      [tokenRecord.user_id]
+    );
+
+    await logSecurityEvent(tokenRecord.user_id, 'password_reset', req.ip, req.get('user-agent'));
+
+    return res.json({ message: 'Password reset successfully. Please sign in with your new password.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/password/reset error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Password reset failed.' : (err.message || 'Password reset failed.'),
     });
   }
 });

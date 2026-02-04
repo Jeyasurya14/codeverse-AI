@@ -3,7 +3,9 @@ export type User = {
   email: string;
   name: string;
   avatar?: string;
-  provider: 'google' | 'github' | 'email';
+  provider: 'email';
+  mfaEnabled?: boolean;
+  emailVerified?: boolean;
 };
 
 export type AuthTokens = {
