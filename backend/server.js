@@ -2921,7 +2921,7 @@ app.post('/ai/chat', aiLimiter, async (req, res) => {
         reply = completion.choices[0]?.message?.content?.trim() || "I couldn't generate a reply.";
         aiTokensUsed = completion.usage?.total_tokens ?? Math.ceil((message.length + reply.length) / 4);
       } else {
-        reply = "I'm the CodeVerse AI mentor. Set OPENAI_API_KEY to enable real AI.";
+        reply = "I'm the CodeVerse mentor. Set OPENAI_API_KEY to enable real AI.";
         aiTokensUsed = 0; // Mock doesn't use real tokens
       }
       

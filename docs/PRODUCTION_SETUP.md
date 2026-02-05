@@ -1,4 +1,4 @@
-# Production setup – CodeVerse AI
+# Production setup – CodeVerse
 
 One guide to take CodeVerse from dev to **production-grade**: backend, app env, OAuth, EAS builds, and store launch. Follow in order.
 

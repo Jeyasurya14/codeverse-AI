@@ -15,7 +15,7 @@ Step-by-step guide to create and host your privacy policy for Play Store.
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeVerse AI - Privacy Policy</title>
+    <title>CodeVerse - Privacy Policy</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
@@ -47,11 +47,11 @@ Step-by-step guide to create and host your privacy policy for Play Store.
     </style>
 </head>
 <body>
-    <h1>Privacy Policy for CodeVerse AI</h1>
+    <h1>Privacy Policy for CodeVerse</h1>
     <p><strong>Last updated:</strong> February 3, 2026</p>
     
     <h2>1. Information We Collect</h2>
-    <p>When you use CodeVerse AI, we collect the following information:</p>
+    <p>When you use CodeVerse, we collect the following information:</p>
     <ul>
         <li><strong>Account Information:</strong> Email address, name (when you sign up or sign in using email, Google, or GitHub)</li>
         <li><strong>Usage Data:</strong> AI conversations, token usage, articles read, progress tracking, bookmarks</li>
@@ -91,7 +91,7 @@ Step-by-step guide to create and host your privacy policy for Play Store.
     <p>To exercise these rights, please contact us using the information below.</p>
     
     <h2>6. Children's Privacy</h2>
-    <p>CodeVerse AI is not intended for children under 13. We do not knowingly collect personal information from children under 13.</p>
+    <p>CodeVerse is not intended for children under 13. We do not knowingly collect personal information from children under 13.</p>
     
     <h2>7. Changes to This Policy</h2>
     <p>We may update this privacy policy from time to time. We will notify you of any changes by updating the "Last updated" date at the top of this page. Your continued use of the app after changes constitutes acceptance of the updated policy.</p>
@@ -99,7 +99,7 @@ Step-by-step guide to create and host your privacy policy for Play Store.
     <h2>8. Contact Us</h2>
     <p>If you have questions about this privacy policy or wish to exercise your rights, please contact us at:</p>
     <p><strong>Email:</strong> [YOUR_EMAIL_HERE]</p>
-    <p><strong>App:</strong> CodeVerse AI</p>
+    <p><strong>App:</strong> CodeVerse</p>
 </body>
 </html>
 ```
@@ -113,7 +113,7 @@ Step-by-step guide to create and host your privacy policy for Play Store.
 1. Go to [github.com](https://github.com) and sign in (or create an account).
 2. Click the **"+"** icon → **"New repository"**.
 3. Repository name: `codeverse-privacy-policy` (or any name).
-4. Description: "Privacy Policy for CodeVerse AI".
+4. Description: "Privacy Policy for CodeVerse".
 5. Set to **Public** (required for free GitHub Pages).
 6. **Do NOT** check "Initialize with README" (you'll upload files).
 7. Click **"Create repository"**.

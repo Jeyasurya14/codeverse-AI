@@ -1,4 +1,4 @@
-# Expo production setup – CodeVerse AI
+# Expo production setup – CodeVerse
 
 Get the app ready for production builds (TestFlight, Play Store, or internal distribution) and point it at your production backend.
 
@@ -47,7 +47,7 @@ eas env:create --name EXPO_PUBLIC_API_URL --value "https://your-backend.onrender
 eas env:create --name EXPO_PUBLIC_GOOGLE_CLIENT_ID --value "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com" --environment production --visibility plaintext
 
 # GitHub OAuth (same Client ID as in backend)
-eas env:create --name EXPO_PUBLIC_GITHUB_CLIENT_ID --value "YOUR_GITHUB_CLIENT_ID" --environment production --visibility plaintext
+eas env:create --name EXPO_PUBLIC_GITHUB_CLIENT_ID --value "Ov23li12lOljFCToSg2E" --environment production --visibility plaintext
 ```
 
 - Use **production** so only production builds get these.

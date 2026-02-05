@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the production-grade conversation limit system implemented for CodeVerse AI Mentor.
+This document describes the production-grade conversation limit system implemented for CodeVerse Mentor.
 
 ## Features
 

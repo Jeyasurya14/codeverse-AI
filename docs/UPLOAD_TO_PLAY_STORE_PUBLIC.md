@@ -1,4 +1,4 @@
-# Upload CodeVerse AI to Play Store (public release)
+# Upload CodeVerse to Play Store (public release)
 
 Step-by-step guide to put your app live for everyone. Do each step in order.
 
@@ -16,7 +16,7 @@ Step-by-step guide to put your app live for everyone. Do each step in order.
 
 1. Go to [Play Console](https://play.google.com/console).
 2. Click **Create app**.
-3. **App name:** CodeVerse AI  
+3. **App name:** CodeVerse  
    **Default language:** English (India) or English (United States)  
    **App or game:** App  
    **Free or paid:** Free  

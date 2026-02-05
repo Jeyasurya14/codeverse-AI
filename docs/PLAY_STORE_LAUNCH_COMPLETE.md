@@ -1,4 +1,4 @@
-# CodeVerse AI – Complete pre-launch check & Play Store launch
+# CodeVerse – Complete pre-launch check & Play Store launch
 
 This guide has two parts: **Part A** is a full application check before launch; **Part B** is the step-by-step process to publish on Google Play Store without issues.
 
@@ -14,7 +14,7 @@ Do this **before** building for production or submitting to Play Store.
 
 | Item | Where to check | Status |
 |------|----------------|--------|
-| **App name** | `app.json` → `expo.name` = `codeverse-ai` (internal). Store listing will use "CodeVerse AI". | ✓ |
+| **App name** | `app.json` → `expo.name` = `codeverse-ai` (internal). Store listing will use "CodeVerse". | ✓ |
 | **Version** | `app.json` → `expo.version` = `1.0.0`. | ✓ |
 | **Android package** | `app.json` → `expo.android.package` = `com.learnmadetamil.codeverseai`. Must be unique on Play Store; do not change after first release. | ✓ |
 | **Deep link scheme** | `app.json` → `expo.scheme` = `codeverse-ai`. Used for OAuth and magic link in standalone app. | ✓ |
@@ -152,7 +152,7 @@ You can fix issues in a new version (bump version, new build, upload to Producti
 
 1. In Play Console, click **Create app**.
 2. Fill in:
-   - **App name:** CodeVerse AI
+   - **App name:** CodeVerse
    - **Default language:** e.g. English (India) or English (United States)
    - **App or game:** App
    - **Free or paid:** Free

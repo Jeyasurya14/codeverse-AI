@@ -1,4 +1,4 @@
-# How to launch CodeVerse AI on the Google Play Store
+# How to launch CodeVerse on the Google Play Store
 
 Step-by-step from build to live on Play Store.
 
@@ -17,7 +17,7 @@ Step-by-step from build to live on Play Store.
 
 1. In Play Console, click **Create app**.
 2. Fill in:
-   - **App name:** CodeVerse AI
+   - **App name:** CodeVerse
    - **Default language:** your choice (e.g. English)
    - **App or game:** App
    - **Free or paid:** Free (or Paid if you monetize)

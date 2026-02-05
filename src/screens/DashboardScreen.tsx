@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Share, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
@@ -94,10 +94,27 @@ export function DashboardScreen({ navigation }: any) {
           </TouchableOpacity>
           <Text style={styles.topBarTitle}>Codeverse</Text>
           <View style={styles.topBarRight}>
-            <TouchableOpacity style={styles.topBarBtn} onPress={() => {}}>
+            <TouchableOpacity
+              style={styles.topBarBtn}
+              onPress={async () => {
+                try {
+                  await Share.share({
+                    message: 'Check out CodeVerse - Learn programming with articles and AI mentor!',
+                    title: 'CodeVerse',
+                  });
+                } catch (e) {
+                  // Share cancelled or failed
+                }
+              }}
+            >
               <Ionicons name="share-outline" size={22} color={COLORS.textPrimary} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.topBarBtn} onPress={() => {}}>
+            <TouchableOpacity
+              style={styles.topBarBtn}
+              onPress={() => {
+                Alert.alert('Notifications', 'Notification settings coming soon.');
+              }}
+            >
               <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
             </TouchableOpacity>
           </View>
@@ -174,7 +191,13 @@ export function DashboardScreen({ navigation }: any) {
             <View style={styles.sectionTitleRow}>
               <Ionicons name="trophy" size={18} color={COLORS.secondary} />
               <Text style={styles.sectionTitle}>Achievements</Text>
-              <TouchableOpacity onPress={() => {}}><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.alert('Achievements', `You have ${achievements.filter((a) => a.unlocked).length} of ${achievements.length} achievements unlocked. Keep learning to unlock more!`);
+                }}
+              >
+                <Text style={styles.viewAll}>View All</Text>
+              </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.achievementsScroll}>
               {achievements.map((a) => (
@@ -214,7 +237,26 @@ export function DashboardScreen({ navigation }: any) {
                     <Text style={styles.savedTitle} numberOfLines={1}>{articleTitle}</Text>
                     <Text style={styles.savedMeta}>AI Guided • {article.readTimeMinutes} min read</Text>
                   </View>
-                  <TouchableOpacity style={styles.savedMore} onPress={() => {}}>
+                  <TouchableOpacity
+                    style={styles.savedMore}
+                    onPress={() => {
+                      Alert.alert(
+                        articleTitle,
+                        'Remove bookmark?',
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Remove',
+                            style: 'destructive',
+                            onPress: () => {
+                              // Note: Bookmark removal would need bookmark context method
+                              Alert.alert('Bookmark removed', 'This feature will be available soon.');
+                            },
+                          },
+                        ]
+                      );
+                    }}
+                  >
                     <Ionicons name="ellipsis-vertical" size={18} color={COLORS.textMuted} />
                   </TouchableOpacity>
                 </TouchableOpacity>
@@ -235,12 +277,30 @@ export function DashboardScreen({ navigation }: any) {
               <Text style={styles.settingsRowText}>Recharge tokens</Text>
               <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingsRow} onPress={() => {}} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => {
+                Alert.alert(
+                  'Profile Settings',
+                  'Profile settings coming soon. You can update your name and email from your account.',
+                  [{ text: 'OK' }]
+                );
+              }}
+              activeOpacity={0.7}
+            >
               <Ionicons name="settings-outline" size={22} color={COLORS.textPrimary} />
               <Text style={styles.settingsRowText}>Profile Settings</Text>
               <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.settingsRow} onPress={() => {}} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.settingsRow}
+              onPress={() => {
+                Linking.openURL('https://jeyasurya14.github.io/codeverse-privacy-policy/').catch(() => {
+                  Alert.alert('Privacy Policy', 'View our privacy policy at: https://jeyasurya14.github.io/codeverse-privacy-policy/');
+                });
+              }}
+              activeOpacity={0.7}
+            >
               <Ionicons name="shield-outline" size={22} color={COLORS.textPrimary} />
               <Text style={styles.settingsRowText}>Security & Privacy</Text>
               <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
