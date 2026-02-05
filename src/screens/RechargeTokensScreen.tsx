@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 import { useAuth } from '../context/AuthContext';
 import { useTokens } from '../context/TokenContext';
 import { Card } from '../components/Card';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, PAYMENT_COMING_SOON } from '../constants/theme';
-import { Alert } from 'react-native';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, PAYMENT_COMING_SOON, SHADOWS } from '../constants/theme';
 
 export function RechargeTokensScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -14,14 +16,11 @@ export function RechargeTokensScreen({ navigation }: any) {
   const planLabel = plan === 'pro' ? 'Pro' : plan === 'free' ? 'Free' : 'Other';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showComingSoonModal, setShowComingSoonModal] = useState(false);
 
   const handlePurchase = async (tokens: number) => {
     if (PAYMENT_COMING_SOON) {
-      Alert.alert(
-        'Coming soon',
-        "Payment is being set up. We'll enable recharges in a few days—please check back after the next update.",
-        [{ text: 'OK' }]
-      );
+      setShowComingSoonModal(true);
       return;
     }
     setError(null);
@@ -115,6 +114,69 @@ export function RechargeTokensScreen({ navigation }: any) {
           </Card>
         </ScrollView>
       </SafeAreaView>
+
+      {/* Coming Soon Modal */}
+      <Modal
+        visible={showComingSoonModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowComingSoonModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay}
+          onPress={() => setShowComingSoonModal(false)}
+        >
+          <Animated.View 
+            entering={FadeInDown.springify().damping(15)}
+            style={styles.modalContent}
+            onStartShouldSetResponder={() => true}
+          >
+            <LinearGradient
+              colors={[COLORS.backgroundCard, COLORS.backgroundElevated]}
+              style={styles.modalGradient}
+            >
+              {/* Icon */}
+              <Animated.View 
+                entering={FadeIn.delay(100)}
+                style={styles.modalIconContainer}
+              >
+                <LinearGradient
+                  colors={[COLORS.primary, COLORS.secondary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.modalIconGradient}
+                >
+                  <Ionicons name="time-outline" size={32} color={COLORS.textPrimary} />
+                </LinearGradient>
+              </Animated.View>
+
+              {/* Title */}
+              <Text style={styles.modalTitle}>Coming Soon</Text>
+
+              {/* Message */}
+              <Text style={styles.modalMessage}>
+                Payment is being set up. We'll enable recharges in a few days—please check back after the next update.
+              </Text>
+
+              {/* Button */}
+              <TouchableOpacity
+                onPress={() => setShowComingSoonModal(false)}
+                activeOpacity={0.8}
+                style={styles.modalButton}
+              >
+                <LinearGradient
+                  colors={[COLORS.primary, COLORS.primaryDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.modalButtonGradient}
+                >
+                  <Text style={styles.modalButtonText}>Got it</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </LinearGradient>
+          </Animated.View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -275,5 +337,67 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
     color: COLORS.textSecondary,
     lineHeight: 22,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: COLORS.backgroundOverlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: BORDER_RADIUS.xl,
+    overflow: 'hidden',
+    ...SHADOWS.cardElevated,
+  },
+  modalGradient: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+  },
+  modalIconContainer: {
+    marginBottom: SPACING.lg,
+  },
+  modalIconGradient: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.button,
+  },
+  modalTitle: {
+    fontSize: FONT_SIZES.hero,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 24,
+    marginBottom: SPACING.xl,
+    paddingHorizontal: SPACING.sm,
+  },
+  modalButton: {
+    width: '100%',
+    borderRadius: BORDER_RADIUS.md,
+    overflow: 'hidden',
+    ...SHADOWS.button,
+  },
+  modalButtonGradient: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonText: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
   },
 });

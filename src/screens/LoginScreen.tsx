@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NeonButton } from '../components/NeonButton';
 import { GradientIllustration } from '../components/GradientIllustration';
 import { useEmailAuth } from '../hooks/useEmailAuth';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, STORAGE_KEYS } from '../constants/theme';
 
 const FRIENDLY_MESSAGES: Record<string, string> = {
   'Request timed out. Try again.': 'Connection timed out. Check your network and try again.',
@@ -24,10 +25,21 @@ export function LoginScreen({ navigation }: any) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [mfaCode, setMfaCode] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true); // Default to true for better UX
   const [requiresMfa, setRequiresMfa] = useState(false);
 
   const { login, sendMagicLink, isLoading: emailLoading } = useEmailAuth();
+
+  // Load remember me preference on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEYS.REMEMBER_ME).then((value) => {
+      if (value === 'true') {
+        setRememberMe(true);
+      }
+    }).catch(() => {
+      // Ignore errors
+    });
+  }, []);
 
   const handleEmailLogin = async () => {
     if (!email.trim() || !password.trim()) {

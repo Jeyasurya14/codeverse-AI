@@ -143,9 +143,45 @@ const corsOptions = corsOrigins.length
   ? { origin: corsOrigins, optionsSuccessStatus: 200 }
   : { origin: true };
 
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-  : null;
+// Initialize OpenAI client with proper error handling and validation
+let openai = null;
+if (process.env.OPENAI_API_KEY) {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY.trim();
+    if (apiKey && apiKey.length > 0) {
+      // Validate API key format (should start with sk-)
+      if (!apiKey.startsWith('sk-')) {
+        console.warn('⚠️  OPENAI_API_KEY format looks invalid (should start with sk-)');
+      }
+      openai = new OpenAI({ 
+        apiKey,
+        timeout: 30000, // 30 second timeout
+        maxRetries: 2, // Retry failed requests up to 2 times
+      });
+      console.log('✅ OpenAI client initialized');
+      
+      // Test the API key with a simple request (optional, can be disabled for faster startup)
+      if (process.env.VALIDATE_OPENAI_KEY !== 'false') {
+        // Don't await - let it validate in background
+        openai.models.list().then(() => {
+          console.log('✅ OpenAI API key validated successfully');
+        }).catch((err) => {
+          console.error('❌ OpenAI API key validation failed:', err.message);
+          if (err.status === 401) {
+            console.error('   The API key appears to be invalid or expired. Please check your OPENAI_API_KEY.');
+          }
+        });
+      }
+    } else {
+      console.warn('⚠️  OPENAI_API_KEY is empty');
+    }
+  } catch (error) {
+    console.error('❌ Failed to initialize OpenAI client:', error.message);
+    openai = null;
+  }
+} else {
+  console.warn('⚠️  OPENAI_API_KEY not set - AI chat will be mocked');
+}
 
 // Razorpay (India) – monthly subscriptions
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
@@ -1211,6 +1247,8 @@ app.get('/health', async (req, res) => {
     status: 'OK',
     timestamp: new Date().toISOString(),
     database: 'disconnected',
+    openai: openai ? 'configured' : 'not_configured',
+    environment: isProduction ? 'production' : 'development',
   };
   
   // Check database connection
@@ -1224,7 +1262,21 @@ app.get('/health', async (req, res) => {
     }
   }
   
-  const statusCode = health.database === 'connected' ? 200 : 503;
+  // Check OpenAI configuration (lightweight check)
+  if (openai) {
+    health.openai = 'configured';
+  } else {
+    health.openai = 'not_configured';
+    if (isProduction) {
+      health.openaiWarning = 'OpenAI not configured - AI chat unavailable';
+    }
+  }
+  
+  // Determine overall status
+  const isHealthy = health.database === 'connected' && (health.openai === 'configured' || !isProduction);
+  health.status = isHealthy ? 'OK' : 'DEGRADED';
+  
+  const statusCode = isHealthy ? 200 : 503;
   res.status(statusCode).json(health);
 });
 
@@ -2914,38 +2966,90 @@ app.post('/ai/chat', aiLimiter, async (req, res) => {
     let aiTokensUsed = 0;
     
     try {
-      if (openai) {
-        const systemContent =
-          context && String(context).trim()
-            ? `You are a friendly programming mentor. The user is learning in this context: ${String(context).trim()}. Explain clearly and concisely.`
-            : 'You are a friendly programming mentor. Explain clearly and concisely. Help with code and interview prep.';
+      if (!openai) {
+        console.error('OpenAI client not initialized - check OPENAI_API_KEY environment variable');
+        return res.status(503).json({ 
+          message: 'AI service is not configured. Please contact support.',
+          tokensUsed: 0, // Refund tokens if service not configured
+        });
+      }
 
-        // Build messages array with conversation history
-        const messagesForAI = [
-          { role: 'system', content: systemContent },
-        ];
-        
-        // Add conversation history (excluding the current message we just added)
-        recentMessages.forEach(msg => {
-          if (msg.role === 'user' || msg.role === 'assistant') {
-            messagesForAI.push({
-              role: msg.role,
-              content: msg.text,
-            });
+      const systemContent =
+        context && String(context).trim()
+          ? `You are a friendly programming mentor. The user is learning in this context: ${String(context).trim()}. Explain clearly and concisely.`
+          : 'You are a friendly programming mentor. Explain clearly and concisely. Help with code and interview prep.';
+
+      // Build messages array with conversation history
+      const messagesForAI = [
+        { role: 'system', content: systemContent },
+      ];
+      
+      // Add conversation history (excluding the current message we just added)
+      recentMessages.forEach(msg => {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          messagesForAI.push({
+            role: msg.role,
+            content: msg.text,
+          });
+        }
+      });
+
+      // Make OpenAI API call with timeout and retry logic
+      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+      let completion;
+      let lastError;
+      const maxRetries = 2;
+      let retryCount = 0;
+      
+      // Retry logic for transient failures
+      while (retryCount <= maxRetries) {
+        try {
+          completion = await Promise.race([
+            openai.chat.completions.create({
+              model: model,
+              messages: messagesForAI,
+              max_tokens: 1024,
+              temperature: 0.7,
+            }),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('OpenAI API request timeout')), 35000)
+            )
+          ]);
+          
+          // Success - break out of retry loop
+          break;
+        } catch (retryError) {
+          lastError = retryError;
+          
+          // Don't retry on non-retryable errors
+          const isRetryable = 
+            retryError.status === 429 || // Rate limit
+            retryError.status === 500 || // Server error
+            retryError.status === 502 || // Bad gateway
+            retryError.status === 503 || // Service unavailable
+            retryError.message?.includes('timeout') || // Timeout
+            retryError.message?.includes('ECONNRESET') || // Connection reset
+            retryError.message?.includes('ETIMEDOUT'); // Network timeout
+          
+          if (!isRetryable || retryCount >= maxRetries) {
+            throw retryError;
           }
-        });
+          
+          // Exponential backoff: wait 1s, 2s, 4s
+          const delayMs = Math.min(1000 * Math.pow(2, retryCount), 4000);
+          if (isProduction) {
+            console.log(`⚠️  OpenAI API retry ${retryCount + 1}/${maxRetries} after ${delayMs}ms: ${retryError.message}`);
+          }
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          retryCount++;
+        }
+      }
 
-        const completion = await openai.chat.completions.create({
-          model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-          messages: messagesForAI,
-          max_tokens: 1024,
-        });
-
-        reply = completion.choices[0]?.message?.content?.trim() || "I couldn't generate a reply.";
-        aiTokensUsed = completion.usage?.total_tokens ?? Math.ceil((message.length + reply.length) / 4);
-      } else {
-        reply = "I'm the CodeVerse mentor. Set OPENAI_API_KEY to enable real AI.";
-        aiTokensUsed = 0; // Mock doesn't use real tokens
+      reply = completion.choices[0]?.message?.content?.trim() || "I couldn't generate a reply.";
+      aiTokensUsed = completion.usage?.total_tokens ?? Math.ceil((message.length + reply.length) / 4);
+      
+      if (!reply || reply.length === 0) {
+        throw new Error('Empty response from OpenAI API');
       }
       
       // Store assistant reply
@@ -2966,21 +3070,117 @@ app.post('/ai/chat', aiLimiter, async (req, res) => {
         conversationId: currentConversationId,
       });
     } catch (aiError) {
-      // If AI call fails, we could refund tokens, but for now we'll keep them consumed
-      // (user got rate limited or API error, but we already consumed their tokens)
-      console.error('AI call failed after token consumption:', aiError.message);
+      // Refund tokens on certain errors
+      let shouldRefundTokens = false;
+      let errorMessage = 'AI request failed. Please try again.';
+      let statusCode = 500;
       
-      if (aiError.status === 401) {
-        return res.status(500).json({ message: 'Invalid OpenAI API key.' });
+      // Check if OpenAI is configured
+      if (!openai) {
+        shouldRefundTokens = true;
+        errorMessage = 'AI service is not configured. Please contact support.';
+        statusCode = 503;
       }
-      if (aiError.status === 429) {
-        return res.status(503).json({ 
-          message: 'AI service is busy. Please try again in a moment.',
-          tokensUsed: TOKENS_PER_AI_MESSAGE, // Tokens still consumed
-        });
+      // Handle OpenAI API errors
+      else if (aiError.status === 401 || aiError.statusCode === 401 || aiError.code === 'invalid_api_key') {
+        shouldRefundTokens = true;
+        errorMessage = 'AI service configuration error. Please contact support.';
+        statusCode = 500;
+        if (isProduction) {
+          console.error('❌ OpenAI API key is invalid or expired');
+        }
+      }
+      // Rate limit - don't refund (user should wait)
+      else if (aiError.status === 429 || aiError.statusCode === 429) {
+        errorMessage = 'AI service is busy. Please try again in a moment.';
+        statusCode = 503;
+        if (isProduction) {
+          console.log('⚠️  OpenAI rate limit hit for user:', userId);
+        }
+      }
+      // Server errors - refund tokens (not user's fault)
+      else if (aiError.status === 500 || aiError.statusCode === 500 || 
+               aiError.status === 502 || aiError.statusCode === 502 ||
+               aiError.status === 503 || aiError.statusCode === 503) {
+        shouldRefundTokens = true;
+        errorMessage = 'AI service error. Please try again in a moment.';
+        statusCode = 503;
+        if (isProduction) {
+          console.error('⚠️  OpenAI server error:', aiError.status || aiError.statusCode);
+        }
+      }
+      // Timeout errors - refund tokens
+      else if (aiError.message?.includes('timeout') || aiError.message?.includes('Timeout')) {
+        shouldRefundTokens = true;
+        errorMessage = 'Request timed out. Please try again.';
+        statusCode = 504;
+        if (isProduction) {
+          console.error('⚠️  OpenAI timeout for user:', userId);
+        }
+      }
+      // Network errors - refund tokens
+      else if (aiError.message?.includes('ECONNRESET') || 
+               aiError.message?.includes('ETIMEDOUT') ||
+               aiError.message?.includes('ENOTFOUND') ||
+               aiError.code === 'ECONNRESET' ||
+               aiError.code === 'ETIMEDOUT') {
+        shouldRefundTokens = true;
+        errorMessage = 'Network error. Please check your connection and try again.';
+        statusCode = 503;
+        if (isProduction) {
+          console.error('⚠️  OpenAI network error:', aiError.message || aiError.code);
+        }
+      }
+      // Invalid request - don't refund (user's fault)
+      else if (aiError.type === 'invalid_request_error' || aiError.code === 'invalid_request_error') {
+        errorMessage = 'Invalid request. Please check your message and try again.';
+        statusCode = 400;
       }
       
-      throw aiError; // Re-throw to be caught by outer catch
+      // Refund tokens if needed
+      if (shouldRefundTokens && consumeResult.success) {
+        try {
+          await pool.query(
+            `UPDATE token_usage 
+             SET free_used = GREATEST(0, free_used - $1),
+                 purchased_used = GREATEST(0, purchased_used - $2)
+             WHERE user_id = $3`,
+            [
+              consumeResult.freeConsumed || 0,
+              consumeResult.purchasedConsumed || 0,
+              userId
+            ]
+          );
+          if (isProduction) {
+            console.log(`✅ Refunded ${TOKENS_PER_AI_MESSAGE} tokens to user ${userId} due to ${statusCode} error`);
+          }
+        } catch (refundError) {
+          // Log but don't fail - token refund is best effort
+          if (isProduction) {
+            console.error('⚠️  Failed to refund tokens:', refundError.message);
+          }
+        }
+      }
+      
+      // Log error for production monitoring
+      if (isProduction) {
+        const errorLog = {
+          userId,
+          error: aiError.message || String(aiError),
+          status: aiError.status || aiError.statusCode,
+          code: aiError.code,
+          type: aiError.type,
+          timestamp: new Date().toISOString(),
+        };
+        console.error('AI call failed:', JSON.stringify(errorLog));
+      } else {
+        console.error('AI call failed:', aiError.message || aiError);
+      }
+      
+      return res.status(statusCode).json({ 
+        message: errorMessage,
+        tokensUsed: shouldRefundTokens ? 0 : TOKENS_PER_AI_MESSAGE,
+      });
     }
   } catch (err) {
     if (!isProduction) console.error('/ai/chat error:', err.message);

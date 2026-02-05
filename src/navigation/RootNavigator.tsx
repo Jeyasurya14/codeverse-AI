@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -13,9 +13,10 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../context/AuthContext';
 import type { User } from '../types';
-import { COLORS, FONTS, SPACING, FONT_SIZES } from '../constants/theme';
+import { COLORS, FONTS, SPACING, FONT_SIZES, STORAGE_KEYS } from '../constants/theme';
 
 // Support both exp:// (Expo Go) and codeverse-ai:// (standalone) deep links
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -32,6 +33,7 @@ import type { Article } from '../types';
 import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
+import { OnboardingSlidesScreen } from '../screens/OnboardingSlidesScreen';
 import { HomeScreen } from '../screens/HomeScreen';
 import { DashboardScreen } from '../screens/DashboardScreen';
 import { ProgrammingScreen } from '../screens/ProgrammingScreen';
@@ -41,6 +43,7 @@ import { AIMentorScreen } from '../screens/AIMentorScreen';
 import { RechargeTokensScreen } from '../screens/RechargeTokensScreen';
 
 export type RootStackParamList = {
+  OnboardingSlides: undefined;
   Login: undefined;
   Register: undefined;
   Onboarding: undefined;
@@ -145,6 +148,27 @@ export function RootNavigator() {
   const navigationRef = useRef<any>(null);
   const prevUserRef = useRef<User | null>(null);
   const prevOnboardingRef = useRef<boolean>(false);
+  const [onboardingSlidesShown, setOnboardingSlidesShown] = useState<boolean | null>(null);
+  const [checkingSlides, setCheckingSlides] = useState(true);
+
+  // Check if onboarding slides have been shown
+  useEffect(() => {
+    const checkOnboardingSlides = async () => {
+      try {
+        const shown = await AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_SLIDES_SHOWN);
+        setOnboardingSlidesShown(shown === 'true');
+      } catch (e) {
+        if (__DEV__) console.warn('Failed to check onboarding slides status', e);
+        setOnboardingSlidesShown(false);
+      } finally {
+        setCheckingSlides(false);
+      }
+    };
+    
+    if (!isLoading) {
+      checkOnboardingSlides();
+    }
+  }, [isLoading]);
 
   // Reset navigation when user logs in and onboarding is complete
   useEffect(() => {
@@ -167,7 +191,7 @@ export function RootNavigator() {
     prevOnboardingRef.current = isOnboardingDone;
   }, [user, isOnboardingDone]);
 
-  if (isLoading) {
+  if (isLoading || checkingSlides) {
     return <RootLoadingScreen />;
   }
 
@@ -175,10 +199,19 @@ export function RootNavigator() {
     <NavigationContainer ref={navigationRef} linking={linking}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
-          <>
-            <Stack.Screen name="Login" component={LoginScreen} />
-            <Stack.Screen name="Register" component={RegisterScreen} />
-          </>
+          // Not logged in - show onboarding slides first (if not shown), then login
+          onboardingSlidesShown ? (
+            <>
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+            </>
+          ) : (
+            <>
+              <Stack.Screen name="OnboardingSlides" component={OnboardingSlidesScreen} />
+              <Stack.Screen name="Login" component={LoginScreen} />
+              <Stack.Screen name="Register" component={RegisterScreen} />
+            </>
+          )
         ) : !isOnboardingDone ? (
           <Stack.Screen name="Onboarding" component={OnboardingScreen} />
         ) : (

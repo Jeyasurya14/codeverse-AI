@@ -42,30 +42,36 @@ export function useEmailAuth() {
       
       // Check if MFA is required
       if (result.requiresMfa) {
+        setIsLoading(false);
         return { success: false, requiresMfa: true };
       }
       
-      await signIn(result.user, {
+      // Sign in immediately (optimized - doesn't block)
+      signIn(result.user, {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
         expiresAt: result.expiresAt,
-      }, rememberMe);
+      }, rememberMe).catch((e) => {
+        if (__DEV__) console.warn('Sign in storage error', e);
+      });
       
-      // Sync token usage from backend response
+      // Sync token usage in background (non-blocking)
       if (result.tokenUsage) {
-        await refreshTokens();
+        refreshTokens().catch((e) => {
+          if (__DEV__) console.warn('Token refresh error', e);
+        });
       }
       
+      setIsLoading(false);
       return { success: true };
     } catch (error) {
+      setIsLoading(false);
       const message = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
       // Don't show alert for MFA requirement
       if (!message.includes('MFA')) {
         Alert.alert('Login Failed', message);
       }
       return { success: false, error: message };
-    } finally {
-      setIsLoading(false);
     }
   };
 

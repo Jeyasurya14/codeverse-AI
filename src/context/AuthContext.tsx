@@ -76,18 +76,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN),
           AsyncStorage.getItem(STORAGE_KEYS.ONBOARDING_DONE),
         ]);
-        if (userJson) setUser(JSON.parse(userJson));
-        if (tokenJson) {
+        
+        // If we have both user and tokens, restore session
+        if (userJson && tokenJson) {
+          try {
+            const user = JSON.parse(userJson);
+            const tokens = JSON.parse(tokenJson) as AuthTokens;
+            
+            // Check if tokens are valid (not expired)
+            if (tokens.expiresAt) {
+              const expiresAt = new Date(tokens.expiresAt).getTime();
+              const now = Date.now();
+              const timeUntilExpiry = expiresAt - now;
+              
+              // If token is expired or expiring soon, try to refresh
+              if (timeUntilExpiry < 5 * 60 * 1000 && tokens.refreshToken) {
+                try {
+                  const result = await refreshToken(tokens.refreshToken);
+                  const newTokens: AuthTokens = {
+                    ...tokens,
+                    accessToken: result.accessToken,
+                    // Keep existing expiresAt or calculate new one (15 min from now)
+                    expiresAt: result.expiresAt || new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+                  };
+                  setAuthTokens(newTokens);
+                  // Don't await - do in parallel with setting user
+                  AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, JSON.stringify(newTokens)).catch(() => {});
+                  setUser(user);
+                } catch (refreshError) {
+                  // Refresh failed - tokens are invalid, clear them
+                  if (__DEV__) console.warn('Token refresh failed on restore', refreshError);
+                  await AsyncStorage.multiRemove([
+                    STORAGE_KEYS.USER,
+                    STORAGE_KEYS.AUTH_TOKEN,
+                    STORAGE_KEYS.REMEMBER_ME,
+                  ]);
+                }
+              } else if (timeUntilExpiry > 0) {
+                // Tokens are still valid, restore user session immediately
+                setAuthTokens(tokens);
+                setUser(user);
+              } else {
+                // Tokens expired and no refresh token, clear them
+                await AsyncStorage.multiRemove([
+                  STORAGE_KEYS.USER,
+                  STORAGE_KEYS.AUTH_TOKEN,
+                  STORAGE_KEYS.REMEMBER_ME,
+                ]);
+              }
+            } else {
+              // No expiration info, assume valid and restore
+              setAuthTokens(tokens);
+              setUser(user);
+            }
+          } catch (parseError) {
+            // Legacy format: just accessToken string
+            if (tokenJson && !tokenJson.startsWith('{')) {
+              const legacyToken = tokenJson;
+              const user = JSON.parse(userJson);
+              setAuthTokens({ accessToken: legacyToken });
+              await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, JSON.stringify({ accessToken: legacyToken }));
+              setUser(user);
+            } else {
+              if (__DEV__) console.warn('Failed to parse stored auth data', parseError);
+            }
+          }
+        } else if (tokenJson) {
+          // Only tokens, no user - set tokens but don't set user
           try {
             const tokens = JSON.parse(tokenJson) as AuthTokens;
             setAuthTokens(tokens);
           } catch {
-            // Legacy format: just accessToken string
-            const legacyToken = tokenJson;
-            setAuthTokens({ accessToken: legacyToken });
-            await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, JSON.stringify({ accessToken: legacyToken }));
+            // Legacy format
+            setAuthTokens({ accessToken: tokenJson });
           }
         }
+        
         if (onboarding === 'true') setIsOnboardingDone(true);
       } catch (e) {
         if (__DEV__) console.warn('Auth restore failed', e);
@@ -98,17 +162,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signIn = async (u: User, tokens: AuthTokens, rememberMe = false) => {
+    // Optimize: Set state immediately for instant UI update
     setUser(u);
-    await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(u));
     setAuthTokens(tokens);
-    await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, JSON.stringify(tokens));
+    
+    // Optimize: Parallelize AsyncStorage operations
+    const storageOps: Promise<void>[] = [
+      AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(u)),
+      AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, JSON.stringify(tokens)),
+    ];
+    
     if (rememberMe) {
-      await AsyncStorage.setItem(STORAGE_KEYS.REMEMBER_ME, 'true');
+      storageOps.push(AsyncStorage.setItem(STORAGE_KEYS.REMEMBER_ME, 'true'));
     } else {
-      await AsyncStorage.removeItem(STORAGE_KEYS.REMEMBER_ME);
+      storageOps.push(AsyncStorage.removeItem(STORAGE_KEYS.REMEMBER_ME));
     }
+    
     // Automatically complete onboarding so user goes directly to home page
-    await completeOnboarding();
+    storageOps.push(completeOnboarding());
+    
+    // Wait for all storage operations in parallel
+    await Promise.all(storageOps);
   };
 
   const signOut = async () => {

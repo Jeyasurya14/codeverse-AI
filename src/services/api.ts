@@ -194,7 +194,16 @@ export async function api<T>(
     return responseData;
   } catch (e) {
     if (e instanceof Error) {
-      if (e.name === 'AbortError') throw new Error('Request timed out. Try again.');
+      if (e.name === 'AbortError') {
+        throw new Error('Request timed out. Try again.');
+      }
+      // Handle network errors more gracefully
+      if (e.message.includes('Network request failed') || 
+          e.message.includes('Failed to fetch') ||
+          e.message.includes('NetworkError') ||
+          e.name === 'TypeError' && e.message.includes('Network')) {
+        throw new Error('Network error. Check your connection.');
+      }
       throw e;
     }
     throw new Error('Network error. Check your connection.');
@@ -284,12 +293,25 @@ export async function logout(refreshToken?: string) {
 
 // Token Usage Management
 export async function getTokenUsage() {
-  return api<{ freeUsed: number; purchasedTotal: number; purchasedUsed: number }>(
-    '/tokens/usage',
-    {
-      method: 'GET',
+  try {
+    return await api<{ freeUsed: number; purchasedTotal: number; purchasedUsed: number }>(
+      '/tokens/usage',
+      {
+        method: 'GET',
+      }
+    );
+  } catch (e) {
+    // Handle network errors gracefully - don't throw, let caller handle fallback
+    const errorMsg = e instanceof Error ? e.message : String(e);
+    if (errorMsg.includes('Network') || 
+        errorMsg.includes('fetch') ||
+        errorMsg.includes('ECONNREFUSED') ||
+        errorMsg.includes('ETIMEDOUT')) {
+      // Re-throw with a more specific error that TokenContext can handle
+      throw new Error('Network request failed');
     }
-  );
+    throw e;
+  }
 }
 
 export async function syncTokenUsage(freeUsed: number, purchasedTotal: number, purchasedUsed: number) {
@@ -435,6 +457,34 @@ export type SendAIMessageResult = {
 };
 
 const AI_TIMEOUT_MS = 60000;
+const MAX_RETRIES = 2;
+const RETRY_DELAY_BASE_MS = 1000; // Base delay for exponential backoff
+
+// Helper function for exponential backoff retry
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Check if error is retryable
+function isRetryableError(status: number, error: any): boolean {
+  // Retry on network errors, timeouts, and server errors
+  if (error?.name === 'AbortError' || error?.message?.includes('timeout')) {
+    return true;
+  }
+  
+  // Retry on 5xx errors (server errors)
+  if (status >= 500 && status < 600) {
+    return true;
+  }
+  
+  // Retry on 429 (rate limit) - but with longer delay
+  if (status === 429) {
+    return true;
+  }
+  
+  // Don't retry on 4xx client errors (except 429)
+  return false;
+}
 
 export async function sendAIMessage(
   message: string, 
@@ -451,82 +501,179 @@ export async function sendAIMessage(
   }
 
   const url = `${baseUrl.replace(/\/$/, '')}/ai/chat`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(authTokens?.accessToken && {
-          Authorization: `Bearer ${authTokens.accessToken}`,
-        }),
-      },
-      body: JSON.stringify({ 
-        message: String(message).slice(0, 16000), 
-        context: context ? String(context).slice(0, 2000) : undefined,
-        conversationId: conversationId || undefined,
-      }),
-    });
-    clearTimeout(timeout);
-
-    let data: any = {};
+  
+  // Ensure we have a valid access token before making requests
+  let accessToken = authTokens?.accessToken;
+  
+  // If token is missing or expired, try to refresh proactively
+  if (!accessToken && authTokens?.refreshToken) {
     try {
-      const text = await res.text();
-      if (text) {
-        data = JSON.parse(text);
+      const refreshResult = await refreshToken(authTokens.refreshToken);
+      accessToken = refreshResult.accessToken;
+      if (authTokens) {
+        authTokens.accessToken = accessToken;
       }
-    } catch (parseError) {
-      // If JSON parsing fails, use empty object
-      data = {};
+    } catch (refreshError) {
+      // Refresh failed - will try with existing token or fail with 401
+      if (__DEV__) console.warn('Token refresh failed before AI request:', refreshError);
     }
-
-    if (!res.ok) {
-      const msg = (data as { message?: string }).message ?? res.statusText;
-      if (res.status === 402) {
-        // Insufficient tokens - include details if available
-        const tokensRequired = (data as { tokensRequired?: number }).tokensRequired ?? 10;
-        const tokensAvailable = (data as { tokensAvailable?: number }).tokensAvailable ?? 0;
-        throw new Error(`Insufficient tokens. You need ${tokensRequired} tokens but only have ${tokensAvailable} available. Please recharge to continue.`);
-      }
-      if (res.status === 403) {
-        // Conversation limit reached
-        const errorData = data as { message?: string; error?: string; limit?: number; current?: number; plan?: string };
-        throw new Error(JSON.stringify({
-          message: errorData.message || 'Conversation limit reached',
-          error: errorData.error || 'CONVERSATION_LIMIT_REACHED',
-          limit: errorData.limit,
-          current: errorData.current,
-          plan: errorData.plan,
-        }));
-      }
-      throw new Error(msg || 'AI request failed.');
-    }
-
-    // Validate response data
-    if (!data || typeof data !== 'object') {
-      throw new Error('Invalid response from server');
-    }
-
-    const reply = (data as { reply?: string }).reply ?? '';
-    if (!reply) {
-      throw new Error('Empty response from AI. Please try again.');
-    }
-    
-    const tokensUsed = Math.max(0, Number((data as { tokensUsed?: number }).tokensUsed) || 10);
-    const conversationId = (data as { conversationId?: string }).conversationId;
-    
-    return { reply, tokensUsed, conversationId };
-  } catch (e) {
-    clearTimeout(timeout);
-    if (e instanceof Error) {
-      if (e.name === 'AbortError') throw new Error('Request took too long. Try again.');
-      throw e;
-    }
-    throw new Error('Unable to reach AI. Check your connection and try again.');
   }
+
+  let lastError: Error | null = null;
+  let retryCount = 0;
+
+  // Retry loop with exponential backoff
+  while (retryCount <= MAX_RETRIES) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken && {
+            Authorization: `Bearer ${accessToken}`,
+          }),
+        },
+        body: JSON.stringify({ 
+          message: String(message).slice(0, 16000), 
+          context: context ? String(context).slice(0, 2000) : undefined,
+          conversationId: conversationId || undefined,
+        }),
+      });
+      clearTimeout(timeout);
+
+      // Handle 401 - try refreshing token and retry once
+      if (res.status === 401 && authTokens?.refreshToken && accessToken === authTokens?.accessToken) {
+        try {
+          const refreshResult = await refreshToken(authTokens.refreshToken);
+          const newAccessToken = refreshResult.accessToken;
+          if (authTokens) {
+            authTokens.accessToken = newAccessToken;
+          }
+          accessToken = newAccessToken;
+          
+          // Retry immediately with new token (don't count as retry)
+          continue;
+        } catch (refreshError) {
+          throw new Error('Your session has expired. Please sign in again.');
+        }
+      }
+
+      let data: any = {};
+      try {
+        const text = await res.text();
+        if (text) {
+          data = JSON.parse(text);
+        }
+      } catch (parseError) {
+        // If JSON parsing fails, use empty object
+        data = {};
+      }
+
+      if (!res.ok) {
+        const msg = (data as { message?: string }).message ?? res.statusText;
+        
+        // Check if we should retry
+        if (isRetryableError(res.status, null) && retryCount < MAX_RETRIES) {
+          // Calculate exponential backoff delay
+          const delayMs = RETRY_DELAY_BASE_MS * Math.pow(2, retryCount);
+          if (__DEV__) {
+            console.log(`Retrying AI request (${retryCount + 1}/${MAX_RETRIES}) after ${delayMs}ms due to ${res.status}`);
+          }
+          await sleep(delayMs);
+          retryCount++;
+          lastError = new Error(msg || `Request failed with status ${res.status}`);
+          continue; // Retry
+        }
+        
+        // Don't retry - handle specific errors
+        if (res.status === 401) {
+          throw new Error('Your session has expired. Please sign in again.');
+        }
+        if (res.status === 402) {
+          // Insufficient tokens - include details if available
+          const tokensRequired = (data as { tokensRequired?: number }).tokensRequired ?? 10;
+          const tokensAvailable = (data as { tokensAvailable?: number }).tokensAvailable ?? 0;
+          throw new Error(`Insufficient tokens. You need ${tokensRequired} tokens but only have ${tokensAvailable} available. Please recharge to continue.`);
+        }
+        if (res.status === 403) {
+          // Conversation limit reached
+          const errorData = data as { message?: string; error?: string; limit?: number; current?: number; plan?: string };
+          throw new Error(JSON.stringify({
+            message: errorData.message || 'Conversation limit reached',
+            error: errorData.error || 'CONVERSATION_LIMIT_REACHED',
+            limit: errorData.limit,
+            current: errorData.current,
+            plan: errorData.plan,
+          }));
+        }
+        if (res.status === 503 || res.status === 502) {
+          throw new Error('Server is temporarily unavailable. Please try again in a moment.');
+        }
+        if (res.status === 504) {
+          throw new Error('Request timed out. Please check your connection and try again.');
+        }
+        if (res.status >= 500) {
+          throw new Error('Server error. Please try again in a moment.');
+        }
+        throw new Error(msg || `AI request failed (${res.status}). Please try again.`);
+      }
+
+      // Success - validate and return response
+      if (!data || typeof data !== 'object') {
+        throw new Error('Invalid response from server. Please try again.');
+      }
+
+      const reply = (data as { reply?: string }).reply ?? '';
+      if (!reply) {
+        throw new Error('Empty response from AI. Please try again.');
+      }
+      
+      const tokensUsed = Math.max(0, Number((data as { tokensUsed?: number }).tokensUsed) || 10);
+      const conversationId = (data as { conversationId?: string }).conversationId;
+      
+      return { reply, tokensUsed, conversationId };
+    } catch (e) {
+      clearTimeout(timeout);
+      
+      if (e instanceof Error) {
+        // Check if we should retry this error
+        if (isRetryableError(0, e) && retryCount < MAX_RETRIES) {
+          const delayMs = RETRY_DELAY_BASE_MS * Math.pow(2, retryCount);
+          if (__DEV__) {
+            console.log(`Retrying AI request (${retryCount + 1}/${MAX_RETRIES}) after ${delayMs}ms due to error: ${e.message}`);
+          }
+          await sleep(delayMs);
+          retryCount++;
+          lastError = e;
+          continue; // Retry
+        }
+        
+        // Don't retry - handle specific errors
+        if (e.name === 'AbortError') {
+          throw new Error('Request took too long. Please check your connection and try again.');
+        }
+        throw e;
+      }
+      
+      // Non-Error object
+      lastError = new Error(String(e));
+      if (retryCount < MAX_RETRIES) {
+        const delayMs = RETRY_DELAY_BASE_MS * Math.pow(2, retryCount);
+        await sleep(delayMs);
+        retryCount++;
+        continue;
+      }
+      
+      throw new Error('Unable to reach AI. Check your connection and try again.');
+    }
+  }
+  
+  // If we exhausted all retries, throw the last error
+  throw lastError || new Error('Request failed after multiple attempts. Please try again later.');
 }
 
 // Token recharge (payment – integrate Stripe/RevenueCat on backend)

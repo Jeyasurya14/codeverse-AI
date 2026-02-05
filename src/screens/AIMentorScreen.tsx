@@ -426,37 +426,87 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
               },
             ]
           );
-        } else if (errorMessage.includes('Network') || errorMessage.includes('fetch')) {
+        } else if (errorMessage.includes('Network') || errorMessage.includes('fetch') || errorMessage.includes('Unable to reach')) {
           setMessages((m) => [
             ...m,
             {
               role: 'assistant',
-              text: 'Network error. Please check your connection and try again.',
+              text: 'Network error. Please check your internet connection and try again.',
             },
           ]);
-        } else {
-          // Generic error - don't expose internal error details
+        } else if (errorMessage.includes('Server error') || errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503') || errorMessage.includes('temporarily unavailable')) {
           setMessages((m) => [
             ...m,
             {
               role: 'assistant',
-              text: 'Sorry, something went wrong. Please try again later.',
+              text: 'Server is temporarily unavailable. Please try again in a moment.',
+            },
+          ]);
+        } else if (errorMessage.includes('took too long') || errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: 'Request timed out. Please check your connection and try again.',
+            },
+          ]);
+        } else if (errorMessage.includes('after multiple attempts') || errorMessage.includes('Request failed after')) {
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: 'Unable to connect after multiple attempts. Please check your connection and try again later.',
+            },
+          ]);
+        } else if (errorMessage.includes('session has expired') || errorMessage.includes('sign in again')) {
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: 'Your session has expired. Please sign in again.',
+            },
+          ]);
+          Alert.alert(
+            'Session Expired',
+            'Your session has expired. Please sign in again.',
+            [
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await handleTokenExpiration();
+                },
+              },
+            ]
+          );
+        } else {
+          // Generic error - show more helpful message
+          setMessages((m) => [
+            ...m,
+            {
+              role: 'assistant',
+              text: `Sorry, I encountered an error: ${errorMessage}. Please try again or check your connection.`,
             },
           ]);
           
           // Log error for debugging in dev mode only
           if (__DEV__) {
-            console.error('AI Message Error:', errorMessage);
+            console.error('AI Message Error:', errorMessage, e);
           }
         }
       } else {
+        // Non-Error object - provide helpful message
+        const errorStr = String(e);
         setMessages((m) => [
           ...m,
           {
             role: 'assistant',
-            text: 'Sorry, something went wrong. Please try again later.',
+            text: `Sorry, something went wrong: ${errorStr}. Please check your connection and try again.`,
           },
         ]);
+        
+        if (__DEV__) {
+          console.error('AI Message Error (non-Error):', e);
+        }
       }
       
       // Refresh token balance even on error (in case backend consumed tokens)

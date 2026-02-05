@@ -146,6 +146,7 @@ export const STORAGE_KEYS = {
   TOKENS_USED: '@codeverse/tokens_used',
   TOKENS_PURCHASED: '@codeverse/tokens_purchased',
   ONBOARDING_DONE: '@codeverse/onboarding_done',
+  ONBOARDING_SLIDES_SHOWN: '@codeverse/onboarding_slides_shown',
   AUTH_TOKEN: '@codeverse/auth_token',
   LAST_READ_ARTICLE: '@codeverse/last_read_article',
   COMPLETED_ARTICLES: '@codeverse/completed_articles',

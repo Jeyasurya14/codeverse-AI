@@ -48,7 +48,7 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
           await AsyncStorage.setItem(STORAGE_KEYS.TOKENS_PURCHASED, String(backendUsage.purchasedTotal));
           return;
         } catch (e) {
-          // Only warn if it's not an expected error (missing auth, 404 when not authenticated)
+          // Only warn if it's not an expected error (missing auth, network issues, 404 when not authenticated)
           const errorMsg = e instanceof Error ? e.message : String(e);
           const isExpectedError = 
             errorMsg.includes('No authentication') ||
@@ -58,11 +58,19 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
             errorMsg.includes('Not found') ||
             errorMsg.includes('404') ||
             errorMsg.includes('UNAUTHORIZED') ||
-            errorMsg.includes('INVALID_TOKEN');
+            errorMsg.includes('INVALID_TOKEN') ||
+            errorMsg.includes('Network request failed') ||
+            errorMsg.includes('Network error') ||
+            errorMsg.includes('fetch') ||
+            errorMsg.includes('ECONNREFUSED') ||
+            errorMsg.includes('ETIMEDOUT') ||
+            errorMsg.includes('ENOTFOUND') ||
+            (e instanceof Error && e.name === 'TypeError' && errorMsg.includes('Network'));
           
-          // Don't log expected token errors - they're handled elsewhere
-          if (!isExpectedError) {
-            __DEV__ && console.warn('Failed to load token usage from backend, using local storage', e);
+          // Don't log expected errors - they're handled gracefully by falling back to local storage
+          // Only log unexpected errors in development
+          if (!isExpectedError && __DEV__) {
+            console.warn('Failed to load token usage from backend, using local storage', e);
           }
         }
       }
@@ -89,7 +97,20 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
       try {
         await syncTokenUsage(free, purchased, purchasedUsedValue);
       } catch (e) {
-        __DEV__ && console.warn('Failed to sync token usage to backend', e);
+        // Only log non-network errors in development
+        // Network errors are expected when backend is unavailable
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        const isNetworkError = 
+          errorMsg.includes('Network') ||
+          errorMsg.includes('fetch') ||
+          errorMsg.includes('ECONNREFUSED') ||
+          errorMsg.includes('ETIMEDOUT') ||
+          errorMsg.includes('Network request failed');
+        
+        if (!isNetworkError && __DEV__) {
+          console.warn('Failed to sync token usage to backend', e);
+        }
+        // Silently fail on network errors - local storage is the source of truth
       }
     }
   };
