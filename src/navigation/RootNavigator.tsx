@@ -162,8 +162,16 @@ export function RootNavigator() {
   if (isLoading) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <View style={styles.logoContainer}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoText}>CV</Text>
+          </View>
+          <View style={styles.brandRow}>
+            <Text style={styles.brandCode}>Code</Text>
+            <Text style={styles.brandVerse}>Verse</Text>
+          </View>
+        </View>
+        <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
       </View>
     );
   }
@@ -197,12 +205,41 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
   },
-  loadingText: {
-    fontSize: 16,
-    fontFamily: FONTS.medium,
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 48,
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  logoText: {
+    fontSize: 32,
+    fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandCode: {
+    fontSize: 28,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+  },
+  brandVerse: {
+    fontSize: 28,
+    fontFamily: FONTS.bold,
+    color: COLORS.secondary,
+  },
+  loader: {
+    marginTop: 24,
   },
   tabIconWrap: {
     alignItems: 'center',

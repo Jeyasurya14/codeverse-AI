@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/context/AuthContext';
@@ -29,8 +30,18 @@ if (typeof global !== 'undefined') {
   });
 }
 
+// Keep splash screen visible while loading
+SplashScreen.preventAutoHideAsync();
+
 export default function App() {
   const fontsLoaded = useLoadFonts();
+  
+  // Hide splash screen when fonts are loaded
+  useEffect(() => {
+    if (fontsLoaded) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded]);
   
   // Handle unhandled promise rejections
   useEffect(() => {
@@ -54,7 +65,16 @@ export default function App() {
   if (!fontsLoaded) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <View style={styles.logoContainer}>
+          <View style={styles.logoCircle}>
+            <Text style={styles.logoText}>CV</Text>
+          </View>
+          <View style={styles.brandRow}>
+            <Text style={styles.brandCode}>Code</Text>
+            <Text style={styles.brandVerse}>Verse</Text>
+          </View>
+        </View>
+        <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
       </View>
     );
   }
@@ -84,5 +104,43 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 48,
+  },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  logoText: {
+    fontSize: 32,
+    fontFamily: 'System',
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+  },
+  brandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  brandCode: {
+    fontSize: 28,
+    fontFamily: 'System',
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+  },
+  brandVerse: {
+    fontSize: 28,
+    fontFamily: 'System',
+    fontWeight: 'bold',
+    color: COLORS.secondary,
+  },
+  loader: {
+    marginTop: 24,
   },
 });
