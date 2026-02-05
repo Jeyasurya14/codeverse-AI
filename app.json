@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "codeverse-ai",
+    "name": "CodeVerse",
     "slug": "codeverse-ai",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -13,7 +13,9 @@
       "backgroundColor": "#0C1222"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/icon.png",
+      "bundleIdentifier": "com.learnmadetamil.codeverseai"
     },
     "android": {
       "package": "com.learnmadetamil.codeverseai",

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NeonButton } from '../components/NeonButton';
 import { useEmailAuth } from '../hooks/useEmailAuth';
@@ -69,9 +69,11 @@ export function RegisterScreen({ navigation }: any) {
           >
             <View style={styles.content}>
               <View style={styles.logoSection}>
-                <View style={styles.logoCircle}>
-                  <Text style={styles.logoText}>CV</Text>
-                </View>
+                <Image
+                  source={require('../../assets/codeverse-logo.png')}
+                  style={styles.logoImage}
+                  resizeMode="contain"
+                />
                 <Text style={styles.title}>Create Account</Text>
                 <Text style={styles.subtitle}>
                   Join CodeVerse and start learning
@@ -158,19 +160,10 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, justifyContent: 'center' },
   content: { alignItems: 'center', paddingHorizontal: SPACING.lg },
   logoSection: { alignItems: 'center', marginBottom: SPACING.xl },
-  logoCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: BORDER_RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 180,
+    height: 180,
     marginBottom: SPACING.md,
-    backgroundColor: COLORS.primary,
-  },
-  logoText: {
-    fontSize: FONT_SIZES.xxl,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
   },
   title: {
     fontSize: FONT_SIZES.hero,

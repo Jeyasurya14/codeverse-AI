@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Platform, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '../context/AuthContext';
@@ -163,13 +163,11 @@ export function RootNavigator() {
     return (
       <View style={styles.loading}>
         <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>CV</Text>
-          </View>
-          <View style={styles.brandRow}>
-            <Text style={styles.brandCode}>Code</Text>
-            <Text style={styles.brandVerse}>Verse</Text>
-          </View>
+          <Image
+            source={require('../../assets/codeverse-logo.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
         <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
       </View>
@@ -210,36 +208,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 48,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  logoText: {
-    fontSize: 32,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  brandCode: {
-    fontSize: 28,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-  },
-  brandVerse: {
-    fontSize: 28,
-    fontFamily: FONTS.bold,
-    color: COLORS.secondary,
+  logoImage: {
+    width: 200,
+    height: 200,
   },
   loader: {
-    marginTop: 24,
+    marginTop: 32,
   },
   tabIconWrap: {
     alignItems: 'center',

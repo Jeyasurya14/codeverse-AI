@@ -52,28 +52,51 @@ const pool = process.env.DATABASE_URL
       ssl: isProduction ? { rejectUnauthorized: false } : false,
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection cannot be established
+      connectionTimeoutMillis: 30000, // Return an error after 30 seconds if connection cannot be established
+      query_timeout: 30000, // Query timeout in milliseconds
+      statement_timeout: 30000, // Statement timeout in milliseconds
     })
   : null;
 
-// Test database connection on startup
+// Test database connection on startup with retry logic
 if (pool) {
   pool.on('error', (err) => {
     console.error('Unexpected error on idle database client', err);
   });
   
-  // Test connection
-  pool.query('SELECT NOW()')
-    .then(() => {
+  // Test connection with retry logic
+  let retries = 3;
+  const testConnection = async () => {
+    try {
+      const client = await pool.connect();
+      await client.query('SELECT NOW()');
+      client.release();
+      console.log('✅ Database connection pool initialized');
       console.log('✅ Database connected successfully');
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error('❌ Database connection failed:', err.message);
-      if (isProduction) {
-        console.error('FATAL: Cannot connect to database in production');
-        process.exit(1);
+      if (err.code === 'ETIMEDOUT' || err.code === 'ECONNREFUSED') {
+        console.error(`   Error code: ${err.code}`);
+        console.error(`   Attempting to connect to: ${process.env.DATABASE_URL?.replace(/:[^:@]+@/, ':****@') || 'unknown'}`);
       }
-    });
+      
+      retries--;
+      if (retries > 0) {
+        console.log(`   Retrying connection... (${retries} attempts remaining)`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return testConnection();
+      }
+      
+      if (isProduction) {
+        console.error('FATAL: Cannot connect to database in production after retries');
+        process.exit(1);
+      } else {
+        console.warn('⚠️  Continuing without database connection (development mode)');
+      }
+    }
+  };
+  
+  testConnection();
 } else {
   console.warn('⚠️  DATABASE_URL not set - database operations will be mocked');
   if (isProduction) {

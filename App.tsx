@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet, Text, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -35,11 +35,29 @@ SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const fontsLoaded = useLoadFonts();
+  const [appIsReady, setAppIsReady] = useState(false);
   
-  // Hide splash screen when fonts are loaded
   useEffect(() => {
+    async function prepare() {
+      try {
+        // Hide splash screen immediately to show our branded loading screen
+        await SplashScreen.hideAsync();
+        
+        // Wait for fonts to load
+        if (fontsLoaded) {
+          // Small delay to show branded loading screen (optional - remove if you want instant)
+          await new Promise(resolve => setTimeout(resolve, 800));
+          setAppIsReady(true);
+        }
+      } catch (e) {
+        console.warn(e);
+        // Still hide splash even on error
+        await SplashScreen.hideAsync();
+      }
+    }
+    
     if (fontsLoaded) {
-      SplashScreen.hideAsync();
+      prepare();
     }
   }, [fontsLoaded]);
   
@@ -62,17 +80,16 @@ export default function App() {
     }
   }, []);
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !appIsReady) {
     return (
       <View style={styles.loading}>
         <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>CV</Text>
-          </View>
-          <View style={styles.brandRow}>
-            <Text style={styles.brandCode}>Code</Text>
-            <Text style={styles.brandVerse}>Verse</Text>
-          </View>
+          <Image
+            source={require('./assets/codeverse-logo.png')}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+          <Text style={styles.tagline}>Learn programming with AI</Text>
         </View>
         <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
       </View>
@@ -109,38 +126,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 48,
   },
-  logoCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  logoImage: {
+    width: 200,
+    height: 200,
     marginBottom: 16,
   },
-  logoText: {
-    fontSize: 32,
-    fontFamily: 'System',
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-  },
-  brandRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  brandCode: {
-    fontSize: 28,
-    fontFamily: 'System',
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-  },
-  brandVerse: {
-    fontSize: 28,
-    fontFamily: 'System',
-    fontWeight: 'bold',
-    color: COLORS.secondary,
-  },
   loader: {
-    marginTop: 24,
+    marginTop: 32,
+  },
+  tagline: {
+    fontSize: 15,
+    fontFamily: 'System',
+    fontWeight: '400',
+    color: COLORS.textMuted,
+    marginTop: 8,
+    letterSpacing: 0.3,
   },
 });
