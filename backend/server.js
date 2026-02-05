@@ -812,35 +812,25 @@ async function createConversation(userId, title = null) {
     try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:547',message:'After BEGIN transaction',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})+'\n');}catch(e){}
     // #endregion
     
-    // Atomic check: Get plan and count in same transaction
-    // #region agent log
-    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:549',message:'Before SELECT query',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
-    // #endregion
-    const checkResult = await client.query(
-      `SELECT 
-        u.subscription_plan,
-        COUNT(c.id)::int as conversation_count
-      FROM users u
-      LEFT JOIN ai_conversations c ON c.user_id = u.id
-      WHERE u.id = $1
-      GROUP BY u.id, u.subscription_plan
-      FOR UPDATE`,
+    // Get user subscription plan first (with FOR UPDATE to lock the row)
+    const userResult = await client.query(
+      `SELECT subscription_plan FROM users WHERE id = $1 FOR UPDATE`,
       [userId]
     );
-    // #region agent log
-    try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:560',message:'After SELECT query',data:{rowCount:checkResult.rows.length,hasRows:checkResult.rows.length>0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
-    // #endregion
     
-    if (checkResult.rows.length === 0) {
-      // #region agent log
-      try{fs.appendFileSync(path.join(__dirname,'../.cursor/debug.log'),JSON.stringify({location:'server.js:562',message:'User not found, rolling back',data:{userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})+'\n');}catch(e){}
-      // #endregion
+    if (userResult.rows.length === 0) {
       await client.query('ROLLBACK');
       throw new Error('User not found');
     }
     
-    const plan = checkResult.rows[0]?.subscription_plan || 'free';
-    const current = checkResult.rows[0]?.conversation_count || 0;
+    // Count existing conversations separately
+    const countResult = await client.query(
+      `SELECT COUNT(*)::int as conversation_count FROM ai_conversations WHERE user_id = $1`,
+      [userId]
+    );
+    
+    const plan = userResult.rows[0]?.subscription_plan || 'free';
+    const current = countResult.rows[0]?.conversation_count || 0;
     const limit = CONVERSATION_LIMITS[plan] || CONVERSATION_LIMITS.free;
     
     // Check limit (unlimited = -1)
