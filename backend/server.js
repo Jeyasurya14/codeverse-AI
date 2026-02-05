@@ -3018,7 +3018,7 @@ app.post('/ai/chat', aiLimiter, async (req, res) => {
       });
 
       // Make OpenAI API call with timeout and retry logic
-      const model = process.env.OPENAI_MODEL || 'gpt-4.1';
+      const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
       let completion;
       let lastError;
       const maxRetries = 2;
