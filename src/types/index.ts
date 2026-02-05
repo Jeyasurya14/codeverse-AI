@@ -1,3 +1,5 @@
+export type SubscriptionPlan = 'free' | 'starter' | 'learner' | 'pro' | 'unlimited';
+
 export type User = {
   id: string;
   email: string;
@@ -6,6 +8,7 @@ export type User = {
   provider: 'email';
   mfaEnabled?: boolean;
   emailVerified?: boolean;
+  subscriptionPlan?: SubscriptionPlan;
 };
 
 export type AuthTokens = {

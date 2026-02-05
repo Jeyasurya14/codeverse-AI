@@ -93,7 +93,10 @@ export function LoginScreen({ navigation }: any) {
                 <View style={styles.logoCircle}>
                   <Text style={styles.logoText}>CV</Text>
                 </View>
-                <Text style={styles.title}>CodeVerse</Text>
+                <View style={styles.titleRow}>
+                  <Text style={[styles.title, styles.titleCode]}>Code</Text>
+                  <Text style={[styles.title, styles.titleVerse]}>Verse</Text>
+                </View>
                 <Text style={styles.subtitle}>
                   Learn programming with articles and AI mentor
                 </Text>
@@ -254,12 +257,21 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: SPACING.xs,
+  },
   title: {
     fontSize: FONT_SIZES.title,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
     letterSpacing: -0.4,
+  },
+  titleCode: {
+    color: COLORS.textPrimary,
+  },
+  titleVerse: {
+    color: COLORS.secondary,
   },
   subtitle: {
     fontSize: FONT_SIZES.sm,

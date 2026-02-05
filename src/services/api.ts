@@ -208,7 +208,7 @@ export async function exchangeOAuthCode(
   redirectUri: string,
   codeVerifier?: string
 ) {
-  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'google' | 'github' }; accessToken: string; refreshToken: string; expiresAt?: string }>(
+  return api<{ user: { id: string; email: string; name: string; avatar?: string; provider: 'google' | 'github'; subscriptionPlan?: string }; accessToken: string; refreshToken: string; expiresAt?: string }>(
     '/auth/exchange',
     {
       method: 'POST',
@@ -220,7 +220,7 @@ export async function exchangeOAuthCode(
 // Email/Password Auth
 export async function registerEmail(email: string, password: string, name?: string) {
   return api<{ 
-    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; emailVerified?: boolean }; 
+    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; emailVerified?: boolean; subscriptionPlan?: string }; 
     accessToken: string; 
     refreshToken: string; 
     expiresAt?: string;
@@ -236,7 +236,7 @@ export async function registerEmail(email: string, password: string, name?: stri
 
 export async function loginEmail(email: string, password: string, rememberMe = false, mfaCode?: string) {
   return api<{ 
-    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean }; 
+    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean; subscriptionPlan?: string }; 
     accessToken: string; 
     refreshToken: string; 
     expiresAt?: string; 

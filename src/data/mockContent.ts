@@ -1,8 +1,9 @@
 import { ProgrammingLanguage, Article } from '../types';
 import { ARTICLE_CONTENT } from './articleContent';
 
-// Real programming logos (PNG) from skillicons.dev – works in React Native Image
-const SKILL_ICON = (id: string) => `https://skillicons.dev/icons?i=${id}&theme=dark`;
+// High-quality programming language/framework logos from skillicons.dev (dark theme).
+// Used in LangIcon with fallback to initial letter when image fails to load.
+const SKILL_ICON = (slug: string) => `https://skillicons.dev/icons?i=${slug}&theme=dark`;
 
 export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
   // Programming Languages
@@ -10,7 +11,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '1', 
     name: 'JavaScript', 
     slug: 'javascript', 
-    icon: SKILL_ICON('js'), 
+    icon: SKILL_ICON('javascript'), 
     description: 'Web and Node.js', 
     topicCount: 14, 
     category: 'language' 
@@ -19,7 +20,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '2', 
     name: 'Python', 
     slug: 'python', 
-    icon: SKILL_ICON('py'), 
+    icon: SKILL_ICON('python'), 
     description: 'General purpose & data', 
     topicCount: 14, 
     category: 'language' 
@@ -28,7 +29,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '3', 
     name: 'TypeScript', 
     slug: 'typescript', 
-    icon: SKILL_ICON('ts'), 
+    icon: SKILL_ICON('typescript'), 
     description: 'Typed JavaScript', 
     topicCount: 10, 
     category: 'language' 
@@ -149,7 +150,7 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     id: '16', 
     name: 'OpenAI API', 
     slug: 'openai', 
-    icon: SKILL_ICON('ai'), 
+    icon: SKILL_ICON('openai'), 
     description: 'AI integration', 
     topicCount: 5, 
     category: 'aiml' 

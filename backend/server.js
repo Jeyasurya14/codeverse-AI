@@ -124,6 +124,30 @@ const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
+// Razorpay (India) – monthly subscriptions
+const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID;
+const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
+const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET;
+const RAZORPAY_PLANS = {
+  starter: process.env.RAZORPAY_PLAN_STARTER,
+  learner: process.env.RAZORPAY_PLAN_LEARNER,
+  pro: process.env.RAZORPAY_PLAN_PRO,
+  unlimited: process.env.RAZORPAY_PLAN_UNLIMITED,
+};
+const Razorpay = require('razorpay');
+const razorpay = (RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET)
+  ? new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
+  : null;
+const bodyParser = require('body-parser');
+
+// Subscription plan display (prices in INR – set to match Razorpay Plans)
+const SUBSCRIPTION_PLANS_CONFIG = [
+  { planId: 'starter', name: 'Starter', priceMonthly: 199, tokens: 500, conversationLimit: 10 },
+  { planId: 'learner', name: 'Learner', priceMonthly: 499, tokens: 1500, conversationLimit: 25 },
+  { planId: 'pro', name: 'Pro', priceMonthly: 999, tokens: 5000, conversationLimit: 100 },
+  { planId: 'unlimited', name: 'Unlimited', priceMonthly: 1999, tokens: 15000, conversationLimit: -1 },
+];
+
 // --- App ---
 const app = express();
 
@@ -133,6 +157,15 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 app.use(cors(corsOptions));
+
+// Razorpay webhook MUST use raw body for signature verification – register before express.json()
+app.post('/api/webhooks/razorpay', bodyParser.raw({ type: 'application/json' }), (req, res) => {
+  handleRazorpayWebhook(req, res).catch((err) => {
+    console.error('Razorpay webhook error:', err);
+    res.status(500).send('Webhook error');
+  });
+});
+
 app.use(express.json({ limit: '500kb' }));
 
 // General rate limit
@@ -498,6 +531,134 @@ async function canCreateConversation(userId) {
     console.error('❌ Error checking conversation limit:', err.message);
     throw new Error('Failed to check conversation limit');
   }
+}
+
+// --- Razorpay subscription helpers ---
+
+/** Returns true if this event was newly inserted (should process). False if duplicate. */
+async function ensureWebhookEventProcessed(eventId, eventType) {
+  if (!pool) return false;
+  try {
+    const r = await pool.query(
+      'INSERT INTO subscription_webhook_events (event_id, event_type) VALUES ($1, $2) ON CONFLICT (event_id) DO NOTHING RETURNING id',
+      [eventId, eventType]
+    );
+    return r.rowCount > 0;
+  } catch (e) {
+    return false;
+  }
+}
+
+async function getOrCreateRazorpayCustomer(userId, email, name) {
+  if (!razorpay || !pool) return null;
+  const row = await pool.query(
+    'SELECT razorpay_customer_id FROM users WHERE id = $1',
+    [userId]
+  );
+  let customerId = row.rows[0]?.razorpay_customer_id;
+  if (customerId) return customerId;
+  try {
+    const customer = await razorpay.customers.create({
+      name: name || email?.split('@')[0] || 'Customer',
+      email: email || '',
+      contact: '', // optional
+    });
+    customerId = customer.id;
+    await pool.query(
+      'UPDATE users SET razorpay_customer_id = $1, updated_at = NOW() WHERE id = $2',
+      [customerId, userId]
+    );
+    return customerId;
+  } catch (err) {
+    console.error('Razorpay customer create error:', err.message);
+    return null;
+  }
+}
+
+async function handleRazorpayWebhook(req, res) {
+  if (!RAZORPAY_WEBHOOK_SECRET) {
+    return res.status(503).send('Webhook not configured');
+  }
+  const rawBody = req.body;
+  if (!rawBody || !Buffer.isBuffer(rawBody)) {
+    return res.status(400).send('Invalid body');
+  }
+  const signature = req.headers['x-razorpay-signature'];
+  if (!signature) {
+    return res.status(400).send('Missing signature');
+  }
+  const expected = crypto.createHmac('sha256', RAZORPAY_WEBHOOK_SECRET).update(rawBody).digest('hex');
+  if (expected !== signature) {
+    return res.status(400).send('Invalid signature');
+  }
+  let payload;
+  try {
+    payload = JSON.parse(rawBody.toString());
+  } catch (e) {
+    return res.status(400).send('Invalid JSON');
+  }
+  const eventId = payload.id || payload.event?.id;
+  const eventType = payload.event || payload.entity;
+  if (!eventId) {
+    return res.status(200).send('OK');
+  }
+  const isNew = await ensureWebhookEventProcessed(eventId, eventType);
+  if (!isNew) {
+    return res.status(200).send('OK');
+  }
+  const sub = payload.payload?.subscription?.entity || payload.payload?.subscription;
+  if (!sub) {
+    return res.status(200).send('OK');
+  }
+  const razorpaySubId = sub.id;
+  const status = sub.status;
+  const notes = sub.notes || {};
+  const userId = notes.user_id || notes.userId;
+  const currentEnd = sub.current_end ? new Date(sub.current_end * 1000) : null;
+  const endedAt = sub.ended_at ? new Date(sub.ended_at * 1000) : null;
+
+  if (!pool) return res.status(200).send('OK');
+
+  try {
+    if (status === 'activated' || status === 'charged') {
+      const planRow = await pool.query(
+        'SELECT plan_id FROM subscriptions WHERE razorpay_subscription_id = $1',
+        [razorpaySubId]
+      );
+      const planId = planRow.rows[0]?.plan_id || 'starter';
+      const targetUserId = userId || (await pool.query('SELECT user_id FROM subscriptions WHERE razorpay_subscription_id = $1', [razorpaySubId])).rows[0]?.user_id;
+      if (targetUserId) {
+        await pool.query(
+          'UPDATE users SET subscription_plan = $1, updated_at = NOW() WHERE id = $2',
+          [planId, targetUserId]
+        );
+        await pool.query(
+          `UPDATE subscriptions SET status = $1, current_period_start = $2, current_period_end = $3, updated_at = NOW()
+           WHERE razorpay_subscription_id = $4`,
+          [status, sub.current_start ? new Date(sub.current_start * 1000) : null, currentEnd, razorpaySubId]
+        );
+      }
+    } else if (status === 'cancelled' || status === 'completed' || status === 'halted') {
+      const targetUserId = userId || (await pool.query('SELECT user_id FROM subscriptions WHERE razorpay_subscription_id = $1', [razorpaySubId])).rows[0]?.user_id;
+      await pool.query(
+        `UPDATE subscriptions SET status = $1, ended_at = $2, updated_at = NOW() WHERE razorpay_subscription_id = $3`,
+        [status, endedAt, razorpaySubId]
+      );
+      if (targetUserId) {
+        const periodEnd = (await pool.query('SELECT current_period_end FROM subscriptions WHERE razorpay_subscription_id = $1', [razorpaySubId])).rows[0]?.current_period_end;
+        const now = new Date();
+        if (status === 'cancelled' || status === 'completed' || (periodEnd && new Date(periodEnd) < now)) {
+          await pool.query(
+            'UPDATE users SET subscription_plan = $1, updated_at = NOW() WHERE id = $2',
+            ['free', targetUserId]
+          );
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Razorpay webhook DB update error:', err.message);
+  }
+  res.status(200).send('OK');
 }
 
 /**
@@ -1276,6 +1437,7 @@ app.post('/auth/exchange', authLimiter, async (req, res) => {
         name: user.name,
         avatar: user.avatar_url,
         provider: user.provider,
+        subscriptionPlan: user.subscription_plan || 'free',
       },
       accessToken,
       refreshToken,
@@ -1373,6 +1535,7 @@ app.post('/auth/register', authLimiter, async (req, res) => {
         avatar: user.avatar_url,
         provider: user.provider,
         emailVerified: user.email_verified,
+        subscriptionPlan: user.subscription_plan || 'free',
       },
       accessToken,
       refreshToken,
@@ -1480,6 +1643,7 @@ app.post('/auth/login', authLimiter, async (req, res) => {
         avatar: user.avatar_url,
         provider: user.provider,
         mfaEnabled: user.mfa_enabled,
+        subscriptionPlan: user.subscription_plan || 'free',
       },
       accessToken,
       refreshToken,
@@ -2143,6 +2307,90 @@ app.post('/tokens/sync', async (req, res) => {
     if (!isProduction) console.error('/tokens/sync error:', err);
     res.status(500).json({
       message: isProduction ? 'Failed to sync token usage.' : (err.message || 'Failed to sync token usage.'),
+    });
+  }
+});
+
+/**
+ * GET /api/subscription/plans
+ * Returns monthly subscription plans (for India – prices in INR). No auth required.
+ */
+app.get('/api/subscription/plans', (req, res) => {
+  const plans = SUBSCRIPTION_PLANS_CONFIG.map((p) => ({
+    planId: p.planId,
+    name: p.name,
+    priceMonthly: p.priceMonthly,
+    currency: 'INR',
+    tokens: p.tokens,
+    conversationLimit: p.conversationLimit,
+    enabled: !!RAZORPAY_PLANS[p.planId],
+  }));
+  return res.json({ plans });
+});
+
+/**
+ * POST /api/subscription/create
+ * Body: { planId: 'starter' | 'learner' | 'pro' | 'unlimited' }
+ * Creates Razorpay subscription and returns short_url for payment. Auth required.
+ */
+app.post('/api/subscription/create', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid token.' });
+    }
+    if (!razorpay || !pool) {
+      return res.status(503).json({ message: 'Subscriptions are not configured.' });
+    }
+    const { planId } = req.body || {};
+    if (!SUBSCRIPTION_PLANS_CONFIG.some((p) => p.planId === planId)) {
+      return res.status(400).json({ message: 'Invalid planId.' });
+    }
+    const razorpayPlanId = RAZORPAY_PLANS[planId];
+    if (!razorpayPlanId) {
+      return res.status(400).json({ message: 'This plan is not available for subscription.' });
+    }
+    const userId = decoded.sub;
+    const userRow = await pool.query('SELECT id, email, name FROM users WHERE id = $1', [userId]);
+    if (userRow.rows.length === 0) {
+      return res.status(401).json({ message: 'User not found.' });
+    }
+    const user = userRow.rows[0];
+    const customerId = await getOrCreateRazorpayCustomer(userId, user.email, user.name);
+    if (!customerId) {
+      return res.status(500).json({ message: 'Could not create payment customer.' });
+    }
+    const subscription = await razorpay.subscriptions.create({
+      plan_id: razorpayPlanId,
+      customer_id: customerId,
+      total_count: 12,
+      quantity: 1,
+      notes: { user_id: userId },
+    });
+    const subId = subscription.id;
+    const shortUrl = subscription.short_url || null;
+    await pool.query(
+      `INSERT INTO subscriptions (user_id, razorpay_subscription_id, razorpay_plan_id, plan_id, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, 'created', NOW(), NOW())`,
+      [userId, subId, razorpayPlanId, planId]
+    );
+    return res.json({
+      subscriptionId: subId,
+      shortUrl,
+      planId,
+      message: shortUrl ? 'Open shortUrl in browser to complete payment.' : 'Subscription created; complete payment in Razorpay.',
+    });
+  } catch (err) {
+    if (!isProduction) console.error('/api/subscription/create error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Subscription creation failed.' : (err.message || 'Subscription creation failed.'),
     });
   }
 });

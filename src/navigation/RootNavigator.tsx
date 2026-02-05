@@ -58,7 +58,12 @@ function TabIcon({ name, focused, color }: { name: string; focused: boolean; col
   return (
     <View style={styles.tabIconWrap}>
       <Ionicons name={iconName} size={22} color={color} />
-      {focused && <View style={[styles.tabIndicator, { backgroundColor: color }]} />}
+      {focused && (
+        <View style={styles.tabIndicatorContainer}>
+          <View style={[styles.tabIndicatorDot, { backgroundColor: color }]} />
+          <View style={[styles.tabIndicatorLine, { backgroundColor: color }]} />
+        </View>
+      )}
     </View>
   );
 }
@@ -82,15 +87,24 @@ function MainTabs() {
           shadowOpacity: 0.08,
           shadowRadius: 4,
         },
+        tabBarShowLabel: true,
+        tabBarHideOnKeyboard: false,
         tabBarActiveTintColor: COLORS.primary,
         tabBarInactiveTintColor: COLORS.textMuted,
         tabBarLabelStyle: {
           fontFamily: FONTS.medium,
           fontSize: 11,
-          marginTop: 2,
+          marginTop: 4,
+          marginBottom: 0,
         },
         tabBarItemStyle: {
           paddingVertical: SPACING.xs,
+          alignItems: 'center',
+          justifyContent: 'center',
+        },
+        tabBarIconStyle: {
+          alignItems: 'center',
+          justifyContent: 'center',
         },
       }}
     >
@@ -193,12 +207,28 @@ const styles = StyleSheet.create({
   tabIconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
+    position: 'relative',
+    overflow: 'visible',
   },
-  tabIndicator: {
+  tabIndicatorContainer: {
     position: 'absolute',
-    bottom: -6,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    bottom: -SPACING.sm - 2,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  tabIndicatorDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginBottom: 2,
+  },
+  tabIndicatorLine: {
+    width: 30,
+    height: 2,
+    borderRadius: 1,
   },
 });

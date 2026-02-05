@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,38 +7,11 @@ import { useAuth } from '../context/AuthContext';
 import { useTokens } from '../context/TokenContext';
 import { useProgress } from '../context/ProgressContext';
 import { useBookmarks } from '../context/BookmarksContext';
-import { MOCK_ARTICLES } from '../data/mockContent';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, AI_TOKENS } from '../constants/theme';
-import { Card } from '../components/Card';
-import { SkeletonStatCard } from '../components/Skeleton';
+import { MOCK_ARTICLES, MOCK_LANGUAGES } from '../data/mockContent';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, AI_TOKENS, SHADOWS } from '../constants/theme';
 import { getConversations, getAuthTokens } from '../services/api';
-
-const QUICK_LINKS = [
-  { 
-    id: '1', 
-    label: 'Learn Programming', 
-    route: 'Programming', 
-    accent: COLORS.primary,
-    icon: 'book',
-    description: 'Master coding from basics',
-  },
-  { 
-    id: '2', 
-    label: 'AI Mentor', 
-    route: 'AIMentor', 
-    accent: COLORS.secondary,
-    icon: 'sparkles',
-    description: 'Get AI-powered help',
-  },
-  { 
-    id: '3', 
-    label: 'Interview Prep', 
-    route: 'AIMentor', 
-    accent: COLORS.warning,
-    icon: 'briefcase',
-    description: 'Practice coding interviews',
-  },
-];
+import { LangIcon } from '../components/LangIcon';
+import { getLocalLogo } from '../data/langLogos';
 
 export function HomeScreen({ navigation }: any) {
   const { user } = useAuth();
@@ -51,10 +24,56 @@ export function HomeScreen({ navigation }: any) {
   const totalArticles = Object.values(MOCK_ARTICLES).reduce((sum, arr) => sum + arr.length, 0);
   const completedCount = completedArticleIds.length;
   const learningPercent = totalArticles > 0 ? Math.min(100, (completedCount / totalArticles) * 100) : 0;
+  const streakDays = completedCount === 0 ? 0 : Math.min(30, Math.max(1, Math.floor(completedCount / 2)));
+  const streakTrend = streakDays === 0 ? 'Start learning' : streakDays >= 7 ? 'On fire!' : 'Keep it up';
 
   const continueArticle = lastRead
     ? (MOCK_ARTICLES[lastRead.languageId] ?? []).find((a) => a.id === lastRead.articleId)
     : null;
+
+  // Recommended languages: those that have articles, with progress from completedArticleIds
+  const recommendedLanguages = useMemo(() => {
+    const langIds = Object.keys(MOCK_ARTICLES);
+    return MOCK_LANGUAGES.filter((lang) => langIds.includes(lang.id)).slice(0, 6).map((lang) => {
+      const articles = MOCK_ARTICLES[lang.id] ?? [];
+      const completed = articles.filter((a) => completedArticleIds.includes(a.id)).length;
+      const progress = articles.length > 0 ? Math.round((completed / articles.length) * 100) : 0;
+      const firstLevel = articles[0]?.level ?? 'beginner';
+      const tag = firstLevel === 'advanced' ? 'ADVANCED' : firstLevel === 'intermediate' ? 'INTERMEDIATE' : 'BEGINNER';
+      return {
+        id: lang.id,
+        name: lang.name,
+        description: lang.description,
+        icon: lang.icon,
+        slug: lang.slug,
+        articleCount: articles.length,
+        progress,
+        tag: progress === 0 && completed === 0 ? 'NEW' : tag,
+      };
+    });
+  }, [completedArticleIds]);
+
+  // Continue-learning course progress (for the big card)
+  const continueProgressPercent = useMemo(() => {
+    if (!lastRead) return 0;
+    const articles = MOCK_ARTICLES[lastRead.languageId] ?? [];
+    const completed = articles.filter((a) => completedArticleIds.includes(a.id)).length;
+    return articles.length > 0 ? Math.round((completed / articles.length) * 100) : 0;
+  }, [lastRead, completedArticleIds]);
+
+  // Next article in track for "Next: ..."
+  const nextArticleInTrack = useMemo(() => {
+    if (!lastRead || !continueArticle) return null;
+    const articles = (MOCK_ARTICLES[lastRead.languageId] ?? []).sort((a, b) => a.order - b.order);
+    const idx = articles.findIndex((a) => a.id === continueArticle.id);
+    if (idx < 0 || idx >= articles.length - 1) return null;
+    return articles[idx + 1];
+  }, [lastRead, continueArticle]);
+
+  const continueTrackLang = useMemo(
+    () => (lastRead ? MOCK_LANGUAGES.find((l) => l.id === lastRead.languageId) : null),
+    [lastRead]
+  );
 
   // Load conversation count
   useEffect(() => {
@@ -79,274 +98,210 @@ export function HomeScreen({ navigation }: any) {
     }
   };
 
-  // Calculate token usage percentage
-  const freeUsagePercent = AI_TOKENS.FREE_LIMIT > 0 
-    ? Math.min(100, (freeUsed / AI_TOKENS.FREE_LIMIT) * 100)
-    : 0;
-
-  // Quick stats
-  const stats = [
-    {
-      label: 'AI Conversations',
-      value: loadingStats ? '...' : (conversationCount || 0).toString(),
-      icon: 'chatbubbles',
-      color: COLORS.primary,
-    },
-    {
-      label: 'Bookmarks',
-      value: (bookmarks?.length || 0).toString(),
-      icon: 'bookmark',
-      color: COLORS.secondary,
-    },
-    {
-      label: 'AI Tokens',
-      value: (totalAvailable || 0).toString(),
-      icon: 'flash',
-      color: COLORS.warning,
-    },
-  ];
-
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top']}>
+        {/* Header: avatar, welcome, bell, gear */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.name} numberOfLines={1}>
-              {user?.name ?? 'Developer'}
-            </Text>
+            <View style={styles.avatarWrap}>
+              <Ionicons name="person" size={24} color={COLORS.textMuted} />
+            </View>
+            <View style={styles.headerTextWrap}>
+              <Text style={styles.greeting}>Welcome back,</Text>
+              <Text style={styles.name} numberOfLines={1}>{user?.name ?? 'Developer'}</Text>
+            </View>
           </View>
-          <View
-            style={styles.tokenBadge}
-            accessibilityLabel={`${totalAvailable ?? 0} AI tokens remaining`}
-            accessibilityRole="text"
-          >
-            <Ionicons name="flash" size={18} color={COLORS.warning} />
-            <Text style={styles.tokenValue}>{totalAvailable || 0}</Text>
+          <View style={styles.headerIcons}>
+            <TouchableOpacity style={styles.headerIconBtn} onPress={() => {}} hitSlop={10}>
+              <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate('Dashboard')} hitSlop={10}>
+              <Ionicons name="settings-outline" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
           </View>
         </View>
 
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Quick Stats */}
-          <View style={styles.statsContainer}>
-            {loadingStats ? (
-              <>
-                <SkeletonStatCard />
-                <SkeletonStatCard />
-                <SkeletonStatCard />
-              </>
-            ) : (
-              stats.map((stat, index) => (
-                <Animated.View
-                  key={stat.label}
-                  entering={FadeInDown.delay(index * 60).springify().damping(18)}
-                  style={[styles.statCard, { borderColor: stat.color + '20' }]}
-                >
-                  <View style={[styles.statIconContainer, { backgroundColor: stat.color + '18' }]}>
-                    <Ionicons name={stat.icon as any} size={22} color={stat.color} />
-                  </View>
-                  <Text style={styles.statValue}>{stat.value}</Text>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
-                </Animated.View>
-              ))
-            )}
+        {/* Search */}
+        <View style={styles.searchWrap}>
+          <Ionicons name="search" size={20} color={COLORS.textMuted} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search languages or articles..."
+            placeholderTextColor={COLORS.textMuted}
+            editable={false}
+          />
+        </View>
+
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          {/* Two stat cards: Streak | Read */}
+          <View style={styles.twoStatsRow}>
+            <Animated.View entering={FadeInDown.delay(60).springify().damping(18)} style={[styles.statCardBlue, styles.statCardHalf]}>
+              <View style={styles.statCardTop}>
+                <Ionicons name="flash" size={20} color={COLORS.textPrimary} />
+                <Text style={styles.statCardLabel}>STREAK</Text>
+              </View>
+              <Text style={styles.statCardValue}>{streakDays} {streakDays === 1 ? 'Day' : 'Days'}</Text>
+              <Text style={styles.statCardTrend}>{streakTrend}</Text>
+            </Animated.View>
+            <Animated.View entering={FadeInDown.delay(100).springify().damping(18)} style={[styles.statCardGold, styles.statCardHalf]}>
+              <View style={styles.statCardTop}>
+                <Ionicons name="book" size={20} color={COLORS.textPrimary} />
+                <Text style={styles.statCardLabel}>READ</Text>
+              </View>
+              <Text style={styles.statCardValue}>{completedCount} Articles</Text>
+              <Text style={styles.statCardTrend}>{totalArticles > 0 ? `📈 ${Math.round(learningPercent)}% total` : '—'}</Text>
+            </Animated.View>
           </View>
 
-          {/* Learning progress */}
-          <Animated.View entering={FadeInDown.delay(80).springify().damping(18)}>
-            <Card style={styles.learningProgressCard}>
-              <View style={styles.learningProgressHeader}>
-                <View style={[styles.learningProgressIconWrap, { backgroundColor: COLORS.primary + '18' }]}>
-                  <Ionicons name="school" size={20} color={COLORS.primary} />
-                </View>
-                <View style={styles.learningProgressText}>
-                  <Text style={styles.learningProgressLabel}>Learning progress</Text>
-                  <Text style={styles.learningProgressValue}>
-                    {completedCount} of {totalArticles} articles completed
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.learningProgressBarWrap}>
-                <View style={styles.learningProgressBarBg}>
-                  <View
-                    style={[
-                      styles.learningProgressBarFill,
-                      { width: `${learningPercent}%` },
-                    ]}
-                  />
-                </View>
-                <Text style={styles.learningProgressPercent}>{Math.round(learningPercent)}%</Text>
-              </View>
-            </Card>
-          </Animated.View>
-
-          {/* Hero Section - Continue Learning */}
-          {continueArticle ? (
-            <Animated.View entering={FadeInDown.delay(100).springify().damping(18)}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => {
-                try {
-                  navigation.navigate('ArticleDetail', {
-                    article: continueArticle,
-                    languageName: lastRead!.languageName,
-                  });
-                } catch (e) {
-                  if (__DEV__) console.warn('Navigation error:', e);
-                }
-              }}
-              style={styles.continueWrap}
-            >
-              <Card accentColor={COLORS.primary} style={styles.hero}>
-                <View style={styles.continueRow}>
-                  <View style={styles.continueIconWrap}>
-                    <Ionicons name="book" size={26} color={COLORS.primary} />
-                  </View>
-                  <View style={styles.continueText}>
-                    <Text style={styles.continueLabel}>Continue Learning</Text>
-                    <Text style={styles.heroTitle} numberOfLines={1}>
-                      {lastRead!.languageName}
-                    </Text>
-                    <Text style={styles.heroSub} numberOfLines={2}>
-                      {continueArticle.title}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
-                </View>
-              </Card>
-            </TouchableOpacity>
-            </Animated.View>
-          ) : (
-            <Animated.View entering={FadeInDown.delay(100).springify().damping(18)}>
-            <Card accentColor={COLORS.primary} style={styles.hero}>
-              <View style={styles.heroContent}>
-                <View style={styles.heroIconWrap}>
-                  <Ionicons name="school" size={32} color={COLORS.primary} />
-                </View>
-                <Text style={styles.heroTitle}>Start Learning</Text>
-                <Text style={styles.heroSub}>
-                  Structured paths from fundamentals to advanced
-                </Text>
-                <TouchableOpacity
-                  style={styles.heroButton}
-                  onPress={() => {
-                    try {
-                      navigation.navigate('Programming');
-                    } catch (e) {
-                      if (__DEV__) console.warn('Navigation error:', e);
-                    }
-                  }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.heroButtonText}>Browse Languages</Text>
-                  <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
-                </TouchableOpacity>
-              </View>
-            </Card>
-            </Animated.View>
-          )}
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Quick Access</Text>
+          {/* Continue Learning */}
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="play" size={18} color={COLORS.primary} />
+            <Text style={styles.sectionTitle}>Continue Learning</Text>
           </View>
-          <View style={styles.quickAccessGrid}>
-            {QUICK_LINKS.map((item, index) => (
-              <Animated.View
-                key={item.id}
-                entering={FadeInDown.delay(180 + index * 50).springify().damping(18)}
-              >
+
+          {continueArticle && lastRead ? (
+            <Animated.View entering={FadeInDown.delay(120).springify().damping(18)}>
               <TouchableOpacity
-                style={styles.quickAccessCard}
+                activeOpacity={0.9}
                 onPress={() => {
                   try {
-                    navigation.navigate(item.route);
+                    navigation.navigate('ArticleDetail', { article: continueArticle, languageName: lastRead.languageName });
                   } catch (e) {
                     if (__DEV__) console.warn('Navigation error:', e);
                   }
                 }}
-                activeOpacity={0.85}
+                style={styles.continueCard}
               >
-                <View style={styles.quickAccessContent}>
-                  <View style={[styles.quickAccessIcon, { backgroundColor: item.accent + '18' }]}>
-                    <Ionicons name={item.icon as any} size={22} color={item.accent} />
+                <View style={styles.continueCardImage}>
+                  <View style={styles.continueCardTags}>
+                    <View style={styles.tagYellow}><Text style={styles.tagYellowText}>AI-POWERED</Text></View>
+                    <View style={styles.tagDark}><Text style={styles.tagDarkText}>{(continueArticle.level ?? 'beginner').toUpperCase()}</Text></View>
                   </View>
-                  <View style={styles.quickAccessText}>
-                    <Text style={styles.quickAccessTitle}>{item.label}</Text>
-                    <Text style={styles.quickAccessDesc}>{item.description}</Text>
+                  <View style={styles.continueCardImagePlaceholder}>
+                    <LangIcon
+                      iconUri={continueTrackLang?.icon}
+                      iconSource={continueTrackLang ? getLocalLogo(continueTrackLang.slug) : null}
+                      name={lastRead.languageName}
+                      size={72}
+                      accentColor={COLORS.primary}
+                      style={styles.continueCardLogo}
+                    />
                   </View>
-                  <View style={[styles.quickAccessArrow, { backgroundColor: COLORS.backgroundElevated }]}>
-                    <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+                </View>
+                <Text style={styles.continueCardTitle}>{lastRead.languageName} Track</Text>
+                <Text style={styles.continueCardNext}>Next: {nextArticleInTrack?.title ?? continueArticle.title}</Text>
+                <Text style={styles.continueCardProgressLabel}>COURSE PROGRESS</Text>
+                <View style={styles.continueCardProgressBar}>
+                  <View style={[styles.continueCardProgressFill, { width: `${continueProgressPercent}%` }]} />
+                </View>
+                <View style={styles.continueCardBottom}>
+                  <Text style={styles.continueCardPercent}>{continueProgressPercent}%</Text>
+                  <View style={styles.continuePlayBtn}>
+                    <Ionicons name="play" size={24} color={COLORS.background} />
                   </View>
                 </View>
               </TouchableOpacity>
-              </Animated.View>
-            ))}
-          </View>
-
-          <Card style={styles.infoCard} elevated>
-            <View style={styles.infoCardHeader}>
-              <View style={styles.infoCardTitleWrap}>
-                <View style={styles.infoIconContainer}>
-                  <Ionicons name="flash" size={18} color={COLORS.warning} />
+            </Animated.View>
+          ) : (
+            <Animated.View entering={FadeInDown.delay(120).springify().damping(18)}>
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={() => {
+                  try {
+                    navigation.navigate('Programming');
+                  } catch (e) {
+                    if (__DEV__) console.warn('Navigation error:', e);
+                  }
+                }}
+                style={styles.continueCard}
+              >
+                <View style={styles.continueCardImage}>
+                  <View style={styles.continueCardImagePlaceholder}>
+                    <Ionicons name="school" size={48} color={COLORS.primary} />
+                  </View>
                 </View>
-                <View>
-                  <Text style={styles.infoTitle}>AI Tokens</Text>
-                  <Text style={styles.infoSubtitle}>Usage</Text>
-                </View>
-              </View>
-              <View style={styles.tokenBadgeSmall}>
-                <Text style={styles.tokenBadgeValue}>{totalAvailable || 0}</Text>
-              </View>
-            </View>
-            
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>Free Tokens</Text>
-                <Text style={styles.progressValue}>
-                  {freeRemaining} / {AI_TOKENS.FREE_LIMIT}
-                </Text>
-              </View>
-              <View style={styles.progressBarContainer}>
-                <View
-                  style={[
-                    styles.progressBar,
-                    {
-                      width: `${Math.min(freeUsagePercent, 100)}%`,
-                      backgroundColor: freeUsagePercent > 80 ? COLORS.error : COLORS.primary,
-                    },
-                  ]}
-                />
-              </View>
-              <View style={styles.progressFooter}>
-                <Text style={styles.progressSubtext}>
-                  {freeUsed} used
-                </Text>
-                <Text style={styles.progressSubtext}>
-                  {freeRemaining} available
-                </Text>
-              </View>
-            </View>
+                <Text style={styles.continueCardTitle}>Start Learning</Text>
+                <Text style={styles.continueCardNext}>Browse languages and pick a track</Text>
+                <TouchableOpacity style={styles.heroButton} onPress={() => navigation.navigate('Programming')} activeOpacity={0.8}>
+                  <Text style={styles.heroButtonText}>Browse Languages</Text>
+                  <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+                </TouchableOpacity>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
 
-            <View style={styles.rechargeDivider} />
-            <TouchableOpacity
-              style={styles.rechargeButton}
-              onPress={() => {
-                try {
-                  navigation.navigate('RechargeTokens');
-                } catch (e) {
-                  if (__DEV__) console.warn('Navigation error:', e);
-                }
-              }}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.rechargeButtonText}>Recharge Tokens</Text>
-              <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+          {/* Recommended Languages */}
+          <View style={styles.recommendedHeader}>
+            <Text style={styles.sectionTitle}>Recommended Languages</Text>
+            <TouchableOpacity onPress={() => navigation.navigate('Programming')}>
+              <Text style={styles.viewAll}>View All</Text>
             </TouchableOpacity>
-          </Card>
+          </View>
+          {recommendedLanguages.map((lang, index) => (
+            <Animated.View key={lang.id} entering={FadeInDown.delay(160 + index * 50).springify().damping(18)}>
+              <TouchableOpacity
+                style={styles.langCard}
+                activeOpacity={0.85}
+                onPress={() => {
+                  try {
+                    navigation.navigate('ArticleList', { languageId: lang.id, languageName: lang.name });
+                  } catch (e) {
+                    if (__DEV__) console.warn('Navigation error:', e);
+                  }
+                }}
+              >
+                <View style={styles.langCardIconWrap}>
+                  <LangIcon
+                    iconUri={lang.icon}
+                    iconSource={getLocalLogo(lang.slug)}
+                    name={lang.name}
+                    size={48}
+                    accentColor={COLORS.primary}
+                    style={styles.langCardIcon}
+                  />
+                </View>
+                <View style={styles.langCardBody}>
+                  <Text style={styles.langCardTitle}>{lang.name}</Text>
+                  <Text style={styles.langCardDesc}>{lang.articleCount} articles • {lang.description}</Text>
+                  <View style={styles.langCardTag}>
+                    <Text style={styles.langCardTagText}>{lang.tag}</Text>
+                  </View>
+                  <View style={styles.langCardProgressWrap}>
+                    <View style={styles.langCardProgressBg}>
+                      <View style={[styles.langCardProgressFill, { width: `${lang.progress}%` }]} />
+                    </View>
+                    <Text style={styles.langCardProgressText}>{lang.progress}%</Text>
+                  </View>
+                </View>
+                <View style={styles.langCardAction}>
+                  {lang.progress >= 100 ? (
+                    <View style={styles.langCardActionBtn}><Ionicons name="checkmark" size={20} color={COLORS.primary} /></View>
+                  ) : lang.progress === 0 ? (
+                    <View style={styles.langCardActionBtn}><Ionicons name="add" size={20} color={COLORS.primary} /></View>
+                  ) : (
+                    <View style={styles.langCardActionBtn}><Ionicons name="chevron-forward" size={20} color={COLORS.primary} /></View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
+          ))}
+
+          {/* Token / Recharge card at bottom */}
+          <TouchableOpacity
+            style={styles.rechargeCard}
+            onPress={() => navigation.navigate('RechargeTokens')}
+            activeOpacity={0.8}
+          >
+            <View style={styles.rechargeCardLeft}>
+              <Ionicons name="flash" size={20} color={COLORS.warning} />
+              <View>
+                <Text style={styles.rechargeCardTitle}>AI Tokens</Text>
+                <Text style={styles.rechargeCardSub}>{totalAvailable ?? 0} remaining</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -362,393 +317,343 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    gap: SPACING.md,
   },
   headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
     minWidth: 0,
-    justifyContent: 'center',
   },
+  avatarWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.backgroundCard,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+  },
+  headerTextWrap: { flex: 1, minWidth: 0 },
   greeting: {
     fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
     color: COLORS.textMuted,
-    marginBottom: SPACING.xs,
-    letterSpacing: 0.3,
   },
   name: {
-    fontSize: FONT_SIZES.title,
+    fontSize: FONT_SIZES.xl,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    letterSpacing: -0.5,
   },
-  tokenBadge: {
+  headerIcons: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  headerIconBtn: { padding: SPACING.xs },
+  searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.backgroundCard,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor: COLORS.backgroundCard,
-    flexShrink: 0,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    gap: SPACING.sm,
   },
-  tokenValue: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.bold,
-    color: COLORS.warning,
+  searchInput: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
+    color: COLORS.textPrimary,
+    paddingVertical: 0,
   },
   scroll: { flex: 1 },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.xxl,
   },
-  statsContainer: {
+  twoStatsRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: SPACING.md,
     marginBottom: SPACING.xl,
   },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.backgroundCard,
+  statCardHalf: { flex: 1 },
+  statCardBlue: {
+    backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    minHeight: 106,
-    justifyContent: 'center',
-    overflow: 'hidden',
+    ...SHADOWS.card,
   },
-  statIconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.sm,
+  statCardGold: {
+    backgroundColor: COLORS.secondary,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    ...SHADOWS.card,
   },
-  statValue: {
+  statCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
+  statCardLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.bold,
+    color: 'rgba(255,255,255,0.9)',
+    letterSpacing: 0.5,
+  },
+  statCardValue: {
     fontSize: FONT_SIZES.xl,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    marginBottom: SPACING.xs / 2,
-    letterSpacing: -0.3,
   },
-  statLabel: {
+  statCardTrend: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    color: COLORS.success,
+    marginTop: 2,
   },
-  learningProgressCard: {
-    marginBottom: SPACING.lg,
-  },
-  learningProgressHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  learningProgressIconWrap: {
-    width: 40,
-    height: 40,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  learningProgressText: { flex: 1, minWidth: 0 },
-  learningProgressLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.medium,
-    color: COLORS.textPrimary,
-    marginBottom: 2,
-  },
-  learningProgressValue: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-  },
-  learningProgressBarWrap: {
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-  },
-  learningProgressBarBg: {
-    flex: 1,
-    height: 8,
-    backgroundColor: COLORS.backgroundElevated,
-    borderRadius: BORDER_RADIUS.full,
-    overflow: 'hidden',
-  },
-  learningProgressBarFill: {
-    height: '100%',
-    backgroundColor: COLORS.primary,
-    borderRadius: BORDER_RADIUS.full,
-  },
-  learningProgressPercent: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.primary,
-    color: COLORS.primary,
-    minWidth: 36,
-    textAlign: 'right',
-  },
-  hero: { 
-    marginBottom: SPACING.xl,
-    overflow: 'hidden',
-  },
-  continueWrap: { 
-    marginBottom: SPACING.xl,
-  },
-  continueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  continueIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  continueText: { 
-    flex: 1,
-    minWidth: 0,
-  },
-  continueLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.primary,
-    marginBottom: SPACING.xs / 2,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-  },
-  heroContent: {
-    alignItems: 'center',
-    paddingVertical: SPACING.sm,
-  },
-  heroIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.primaryMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
     marginBottom: SPACING.md,
   },
-  heroTitle: {
-    fontSize: FONT_SIZES.title,
+  sectionTitle: {
+    fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
-    letterSpacing: -0.5,
-    textAlign: 'center',
-    lineHeight: 36,
   },
-  heroSub: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    lineHeight: 24,
-    textAlign: 'center',
+  continueCard: {
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    overflow: 'hidden',
     marginBottom: SPACING.xl,
+    ...SHADOWS.card,
+  },
+  continueCardImage: {
+    height: 120,
+    backgroundColor: COLORS.backgroundElevated,
+    position: 'relative',
+  },
+  continueCardTags: {
+    position: 'absolute',
+    top: SPACING.sm,
+    left: SPACING.sm,
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    zIndex: 1,
+  },
+  tagYellow: {
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  tagYellowText: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.background },
+  tagDark: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  tagDarkText: { fontSize: 10, fontFamily: FONTS.bold, color: COLORS.textPrimary },
+  continueCardImagePlaceholder: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  continueCardLogo: {
+    backgroundColor: 'transparent',
+  },
+  continueCardTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
     paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.md,
+  },
+  continueCardNext: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    paddingHorizontal: SPACING.md,
+    marginTop: 2,
+  },
+  continueCardProgressLabel: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.textMuted,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+  },
+  continueCardProgressBar: {
+    height: 6,
+    backgroundColor: COLORS.backgroundElevated,
+    borderRadius: BORDER_RADIUS.full,
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.xs,
+    overflow: 'hidden',
+  },
+  continueCardProgressFill: {
+    height: '100%',
+    backgroundColor: COLORS.secondary,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  continueCardBottom: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  continueCardPercent: {
+    fontSize: FONT_SIZES.lg,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+  },
+  continuePlayBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   heroButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
-    paddingHorizontal: SPACING.xl,
+    paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    margin: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1.5,
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primaryMuted,
+    alignSelf: 'center',
   },
   heroButtonText: {
     fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.primary,
+    fontFamily: FONTS.medium,
     color: COLORS.primary,
-    letterSpacing: -0.2,
   },
-  sectionHeader: {
+  recommendedHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: SPACING.md,
-    marginTop: SPACING.xs,
   },
-  sectionTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    letterSpacing: -0.3,
+  viewAll: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    color: COLORS.primary,
   },
-  quickAccessGrid: {
-    gap: SPACING.sm,
-    marginBottom: SPACING.xl,
-  },
-  quickAccessCard: {
+  langCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.backgroundCard,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
-    overflow: 'hidden',
-  },
-  quickAccessContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
     padding: SPACING.md,
-    gap: SPACING.md,
+    marginBottom: SPACING.sm,
   },
-  quickAccessIcon: {
-    width: 40,
-    height: 40,
+  langCardIconWrap: {
+    width: 48,
+    height: 48,
     borderRadius: BORDER_RADIUS.md,
+    backgroundColor: COLORS.backgroundElevated,
     alignItems: 'center',
     justifyContent: 'center',
-    flexShrink: 0,
-  },
-  quickAccessText: {
-    flex: 1,
-    minWidth: 0,
-  },
-  quickAccessTitle: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs / 2,
-    letterSpacing: -0.2,
-  },
-  quickAccessDesc: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    lineHeight: 16,
-  },
-  quickAccessArrow: {
-    width: 32,
-    height: 32,
-    borderRadius: BORDER_RADIUS.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  infoCard: {
-    marginTop: SPACING.md,
+    marginRight: SPACING.md,
     overflow: 'hidden',
   },
-  infoCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.lg,
-  },
-  infoCardTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    flex: 1,
-    minWidth: 0,
-  },
-  infoIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.warningMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  infoTitle: {
-    fontSize: FONT_SIZES.lg,
+  langCardIcon: {},
+  langCardBody: { flex: 1, minWidth: 0 },
+  langCardTitle: {
+    fontSize: FONT_SIZES.md,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    marginBottom: SPACING.xs / 2,
-    letterSpacing: -0.3,
   },
-  infoSubtitle: {
+  langCardDesc: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
     color: COLORS.textMuted,
+    marginTop: 2,
   },
-  tokenBadgeSmall: {
-    backgroundColor: COLORS.warningMuted,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.warning + '25',
+  langCardTag: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.sm,
+    marginTop: SPACING.xs,
   },
-  tokenBadgeValue: {
-    fontSize: FONT_SIZES.lg,
+  langCardTagText: {
+    fontSize: 10,
     fontFamily: FONTS.bold,
-    color: COLORS.warning,
-    letterSpacing: -0.3,
+    color: COLORS.background,
   },
-  progressSection: {
-    marginBottom: SPACING.lg,
-  },
-  progressHeader: {
+  langCardProgressWrap: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: SPACING.md,
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
   },
-  progressLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.medium,
-    color: COLORS.textSecondary,
-    letterSpacing: 0.2,
-  },
-  progressValue: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-    letterSpacing: -0.2,
-  },
-  progressBarContainer: {
-    height: 6,
+  langCardProgressBg: {
+    flex: 1,
+    height: 4,
     backgroundColor: COLORS.backgroundElevated,
     borderRadius: BORDER_RADIUS.full,
     overflow: 'hidden',
-    marginBottom: SPACING.sm,
   },
-  progressBar: {
+  langCardProgressFill: {
     height: '100%',
+    backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.full,
-    overflow: 'hidden',
   },
-  progressFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  langCardProgressText: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.primary,
+  },
+  langCardAction: {},
+  langCardActionBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.primaryMuted,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  progressSubtext: {
+  rechargeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    marginTop: SPACING.lg,
+  },
+  rechargeCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  rechargeCardTitle: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+  },
+  rechargeCardSub: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
     color: COLORS.textMuted,
-    letterSpacing: 0.1,
-  },
-  rechargeDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: SPACING.md,
-  },
-  rechargeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-  },
-  rechargeButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.primary,
-    color: COLORS.primary,
-    letterSpacing: -0.2,
   },
 });

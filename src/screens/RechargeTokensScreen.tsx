@@ -1,17 +1,29 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../context/AuthContext';
 import { useTokens } from '../context/TokenContext';
-import { NeonButton } from '../components/NeonButton';
 import { Card } from '../components/Card';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS } from '../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, PAYMENT_COMING_SOON } from '../constants/theme';
+import { Alert } from 'react-native';
 
 export function RechargeTokensScreen({ navigation }: any) {
+  const { user } = useAuth();
   const { addPurchasedTokens, totalAvailable } = useTokens();
+  const plan = user?.subscriptionPlan ?? 'free';
+  const planLabel = plan === 'pro' ? 'Pro' : plan === 'free' ? 'Free' : 'Other';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handlePurchase = async (tokens: number) => {
+    if (PAYMENT_COMING_SOON) {
+      Alert.alert(
+        'Coming soon',
+        "Payment is being set up. We'll enable recharges in a few days—please check back after the next update.",
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -33,10 +45,21 @@ export function RechargeTokensScreen({ navigation }: any) {
         </TouchableOpacity>
         <View style={styles.header}>
           <Text style={styles.title}>Recharge AI Tokens</Text>
+          <View style={styles.planBadge}>
+            <Text style={styles.planBadgeText}>Plan: {planLabel}</Text>
+          </View>
           <Text style={styles.subtitle}>
-            Use tokens for AI Mentor & interview prep. You have {totalAvailable} available.
+            Use tokens for AI Mentor & interview prep. You have {totalAvailable} available. Prices in Indian Rupees (₹).
           </Text>
         </View>
+        {PAYMENT_COMING_SOON ? (
+          <View style={styles.comingSoonBanner}>
+            <Text style={styles.comingSoonTitle}>Payment coming soon</Text>
+            <Text style={styles.comingSoonText}>
+              We're setting up secure payments. Recharge will be available in the next update—thanks for your patience.
+            </Text>
+          </View>
+        ) : null}
         {error ? (
           <View style={styles.errorBanner}>
             <Text style={styles.errorText}>{error}</Text>
@@ -59,22 +82,27 @@ export function RechargeTokensScreen({ navigation }: any) {
               onPress={() => handlePurchase(pack.tokens)}
               disabled={loading}
               activeOpacity={0.7}
-              style={[styles.cardWrap, loading && styles.cardDisabled]}
+              style={[styles.cardWrap, loading && styles.cardDisabled, PAYMENT_COMING_SOON && styles.cardComingSoon]}
             >
               <Card
                 accentColor={pack.popular ? COLORS.secondary : COLORS.primary}
                 style={pack.popular ? styles.cardPopular : undefined}
               >
-                {pack.popular && (
+                {PAYMENT_COMING_SOON && (
+                  <View style={styles.comingSoonBadge}>
+                    <Text style={styles.comingSoonBadgeText}>Coming soon</Text>
+                  </View>
+                )}
+                {pack.popular && !PAYMENT_COMING_SOON && (
                   <View style={styles.popularBadge}>
                     <Text style={styles.popularText}>Most popular</Text>
                   </View>
                 )}
                 <Text style={styles.packLabel}>{pack.label}</Text>
                 <Text style={styles.packTokens}>{pack.tokens.toLocaleString()} tokens</Text>
-                <Text style={styles.packPrice}>${pack.price}</Text>
+                <Text style={styles.packPrice}>₹{pack.priceInINR}</Text>
                 <Text style={styles.packPerToken}>
-                  ${((pack.price / pack.tokens) * 100).toFixed(1)}/100 tokens
+                  ₹{Math.round((pack.priceInINR / pack.tokens) * 100)}/100 tokens
                 </Text>
               </Card>
             </TouchableOpacity>
@@ -105,6 +133,42 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   header: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.lg },
+  comingSoonBanner: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    backgroundColor: COLORS.primaryMuted,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary + '40',
+  },
+  comingSoonTitle: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.bold,
+    color: COLORS.primary,
+    marginBottom: SPACING.xs,
+  },
+  comingSoonText: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.regular,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+  },
+  cardComingSoon: { opacity: 0.92 },
+  comingSoonBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.textMuted,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.xs,
+    marginBottom: SPACING.sm,
+  },
+  comingSoonBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.background,
+  },
   errorBanner: {
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
@@ -136,6 +200,21 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
     letterSpacing: -0.4,
+  },
+  planBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.backgroundCard,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+    marginTop: SPACING.sm,
+  },
+  planBadgeText: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    color: COLORS.textPrimary,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,

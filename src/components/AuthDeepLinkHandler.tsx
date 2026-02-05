@@ -70,10 +70,10 @@ export function AuthDeepLinkHandler() {
             if (__DEV__) console.log('WebBrowser.dismissBrowser failed:', e);
           }
         } catch (e) {
-          console.error('Failed to decode token:', e);
+          if (__DEV__) console.error('Failed to decode token:', e);
         }
       } catch (e) {
-        console.error('Magic link token handling failed:', e);
+        if (__DEV__) console.error('Magic link token handling failed:', e);
       }
     };
 

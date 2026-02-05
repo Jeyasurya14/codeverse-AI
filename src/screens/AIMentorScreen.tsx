@@ -20,10 +20,14 @@ import { useAuth } from '../context/AuthContext';
 import { NeonButton } from '../components/NeonButton';
 import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
+import { MessageContent } from '../components/MessageContent';
 import {
   sendAIMessage,
   getAuthTokens,
+  getConversations,
+  getConversationMessages,
 } from '../services/api';
+import type { Conversation } from '../services/api';
 import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, SHADOWS } from '../constants/theme';
 
 const TOKENS_PER_MESSAGE = AI_TOKENS.TOKENS_PER_MESSAGE; // 10 tokens per message
@@ -34,13 +38,6 @@ const MAX_SANITIZED_LENGTH = 5000;
 const MIN_INPUT_LENGTH = 1;
 const MESSAGE_SEND_DEBOUNCE_MS = 500; // Prevent rapid-fire requests
 const MAX_MESSAGES_PER_MINUTE = 10; // Rate limiting
-
-const SUGGESTION_PROMPTS = [
-  'Explain recursion simply',
-  'Common interview question',
-  'Help me debug this code',
-  'Best practices for async',
-] as const;
 
 // Input sanitization utility
 const sanitizeInput = (text: string): string => {
@@ -84,11 +81,15 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
   const { user, signOut } = useAuth();
   const { totalAvailable, freeRemaining, refresh } = useTokens();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string }[]>([]);
+  const [messages, setMessages] = useState<{ role: 'user' | 'assistant'; text: string; createdAt?: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [lastMessageTime, setLastMessageTime] = useState<number>(0);
   const [messageCount, setMessageCount] = useState<number>(0);
+  const [historyModalVisible, setHistoryModalVisible] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
   const sendTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -102,8 +103,42 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
     if (!user) {
       setCurrentConversationId(null);
       setMessages([]);
+      setInitialLoadDone(false);
     }
   }, [user]);
+
+  // Load most recent conversation history when user is available
+  useEffect(() => {
+    if (!user || initialLoadDone) return;
+
+    let cancelled = false;
+
+    async function loadInitialHistory() {
+      try {
+        const result = await getConversations();
+        const list = result?.conversations ?? [];
+        if (cancelled || list.length === 0) {
+          setInitialLoadDone(true);
+          return;
+        }
+        const mostRecent = list[0];
+        const msgResult = await getConversationMessages(mostRecent.id);
+        const msgs = msgResult?.messages ?? [];
+        if (cancelled) return;
+        setCurrentConversationId(mostRecent.id);
+        setMessages(msgs.map((m) => ({ role: m.role, text: m.text, createdAt: m.createdAt })));
+      } catch {
+        if (!cancelled) {
+          if (__DEV__) console.warn('Failed to load conversation history');
+        }
+      } finally {
+        if (!cancelled) setInitialLoadDone(true);
+      }
+    }
+
+    loadInitialHistory();
+    return () => { cancelled = true; };
+  }, [user, initialLoadDone]);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
@@ -133,6 +168,40 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
       }
     };
   }, []);
+
+  const openHistoryModal = async () => {
+    setHistoryModalVisible(true);
+    setLoadingHistory(true);
+    try {
+      const result = await getConversations();
+      setConversations(result?.conversations ?? []);
+    } catch {
+      setConversations([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const selectConversation = async (conv: Conversation) => {
+    setHistoryModalVisible(false);
+    setLoading(true);
+    try {
+      const msgResult = await getConversationMessages(conv.id);
+      const msgs = msgResult?.messages ?? [];
+      setCurrentConversationId(conv.id);
+      setMessages(msgs.map((m) => ({ role: m.role, text: m.text })));
+    } catch {
+      Alert.alert('Error', 'Could not load this conversation.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startNewConversation = () => {
+    setCurrentConversationId(null);
+    setMessages([]);
+    setHistoryModalVisible(false);
+  };
 
   // Helper function to check if error is token-related
   const isTokenError = (error: any): boolean => {
@@ -248,7 +317,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
     }
     
     setInput('');
-    setMessages((m) => [...m, { role: 'user', text: sanitizedText }]);
+    setMessages((m) => [...m, { role: 'user', text: sanitizedText, createdAt: new Date().toISOString() }]);
     setLoading(true);
     setMessageCount((prev) => prev + 1);
     setLastMessageTime(Date.now());
@@ -287,7 +356,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
         }
       }
       
-      setMessages((m) => [...m, { role: 'assistant', text: sanitizedReply }]);
+      setMessages((m) => [...m, { role: 'assistant', text: sanitizedReply, createdAt: new Date().toISOString() }]);
     } catch (e) {
       // Handle errors securely - don't expose internal error details
       const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred';
@@ -410,33 +479,29 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <View style={[styles.iconContainer, { backgroundColor: COLORS.primary + '18' }]}>
-              <Ionicons name="sparkles" size={22} color={COLORS.primary} />
+            <View style={styles.avatarContainer}>
+              <View style={styles.robotHead}>
+                <View style={styles.robotEye} />
+                <View style={styles.robotEye} />
+              </View>
             </View>
             <View style={styles.headerTextBlock}>
-              <Text style={styles.title} numberOfLines={1}>AI Mentor</Text>
-              <Text style={styles.subtitle} numberOfLines={2} ellipsizeMode="tail">
-                Coding help & interview prep
-              </Text>
+              <Text style={styles.title} numberOfLines={1}>Codey AI</Text>
+              <View style={styles.statusContainer}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>ONLINE</Text>
+              </View>
             </View>
           </View>
-          <TouchableOpacity
-            style={[
-              styles.tokenChip,
-              totalAvailable < TOKENS_PER_MESSAGE && styles.tokenChipLow,
-            ]}
-            onPress={() => navigation.navigate('RechargeTokens')}
-          >
-            <Ionicons 
-              name="flash" 
-              size={16} 
-              color={totalAvailable >= TOKENS_PER_MESSAGE ? COLORS.primary : COLORS.warning} 
-            />
-            <View style={styles.tokenInfo}>
-              <Text style={styles.tokenValue}>{totalAvailable}</Text>
-              <Text style={styles.tokenLabel}>tokens</Text>
-            </View>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.headerIconButton}
+              onPress={openHistoryModal}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="time-outline" size={20} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {totalAvailable < TOKENS_PER_MESSAGE && (
@@ -500,69 +565,50 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
                     </View>
                   </View>
                 </View>
-                <View style={styles.suggestionsSection}>
-                  <Text style={styles.suggestionsLabel}>Try asking</Text>
-                  <View style={styles.suggestionChips}>
-                    {SUGGESTION_PROMPTS.map((prompt) => (
-                      <TouchableOpacity
-                        key={prompt}
-                        style={[
-                          styles.suggestionChip,
-                          totalAvailable < TOKENS_PER_MESSAGE && styles.suggestionChipDisabled,
-                        ]}
-                        onPress={() => setInput(prompt)}
-                        activeOpacity={0.7}
-                        disabled={totalAvailable < TOKENS_PER_MESSAGE}
-                      >
-                        <Text 
-                          style={[
-                            styles.suggestionChipText,
-                            totalAvailable < TOKENS_PER_MESSAGE && styles.suggestionChipTextDisabled,
-                          ]} 
-                          numberOfLines={1}
-                        >
-                          {prompt}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
               </View>
               </Card>
             )}
-            {messages.map((msg, i) => (
-              <View
-              key={i}
-              style={[
-                styles.messageContainer, 
-                msg.role === 'user' ? styles.messageUser : styles.messageBot
-              ]}
-            >
-              {msg.role === 'assistant' ? (
-                <>
-                  <View style={styles.avatarBot}>
-                    <Ionicons name="sparkles" size={18} color={COLORS.primary} />
+            {messages.map((msg, i) => {
+              const timestamp = msg.createdAt
+                ? new Date(msg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+                : new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+              return (
+                <View key={i} style={styles.messageWrapper}>
+                  <View
+                    style={[
+                      styles.messageContainer, 
+                      msg.role === 'user' ? styles.messageUser : styles.messageBot
+                    ]}
+                  >
+                    {msg.role === 'assistant' ? (
+                      <>
+                        <View style={styles.avatarBot}>
+                          <Ionicons name="cloud" size={20} color={COLORS.primary} />
+                        </View>
+                        <View style={styles.bubbleBot}>
+                          <MessageContent text={sanitizeMessageText(msg.text)} isUser={false} />
+                        </View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={styles.bubbleUser}>
+                          <MessageContent text={sanitizeMessageText(msg.text)} isUser={true} />
+                        </View>
+                        <View style={styles.avatarUser}>
+                          <Ionicons name="person" size={18} color={COLORS.background} />
+                        </View>
+                      </>
+                    )}
                   </View>
-                  <View style={styles.bubbleBot}>
-                    <Text style={styles.bubbleText}>
-                      {sanitizeMessageText(msg.text)}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.bubbleUser}>
-                    <Text style={styles.bubbleTextUser}>
-                      {sanitizeMessageText(msg.text)}
-                    </Text>
-                  </View>
-                  <View style={styles.avatarUser}>
-                    <Ionicons name="person" size={18} color={COLORS.background} />
-                  </View>
-                </>
-              )}
-              </View>
-            ))}
+                  <Text style={[
+                    styles.timestamp,
+                    msg.role === 'user' ? styles.timestampUser : styles.timestampBot
+                  ]}>
+                    {timestamp}
+                  </Text>
+                </View>
+              );
+            })}
             {loading && (
               <View style={[styles.messageContainer, styles.messageBot]}>
               <View style={styles.avatarBot}>
@@ -577,24 +623,27 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
           </ScrollView>
 
           <View style={styles.inputRow}>
+            {/* Input Field */}
             <View style={styles.inputWrapper}>
               <View style={styles.inputRowInner}>
-                <TextInput
-                  style={[
-                    styles.input,
-                    !canSend && styles.inputDisabled,
-                  ]}
-                  placeholder="Ask about concepts, code, or interviews..."
-                  placeholderTextColor={COLORS.textMuted}
-                  value={input}
-                  onChangeText={setInput}
-                  multiline
-                  maxLength={MAX_INPUT_LENGTH}
-                  editable={totalAvailable >= TOKENS_PER_MESSAGE && !loading}
-                  autoCapitalize="sentences"
-                  autoCorrect={true}
-                  spellCheck={true}
-                />
+                <View style={styles.inputContainer}>
+                  <TextInput
+                    style={[
+                      styles.input,
+                      !canSend && styles.inputDisabled,
+                    ]}
+                    placeholder="Ask a technical question..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={input}
+                    onChangeText={setInput}
+                    multiline
+                    maxLength={MAX_INPUT_LENGTH}
+                    editable={totalAvailable >= TOKENS_PER_MESSAGE && !loading}
+                    autoCapitalize="sentences"
+                    autoCorrect={true}
+                    spellCheck={true}
+                  />
+                </View>
                 <TouchableOpacity
                   onPress={sendMessage}
                   disabled={!canSend || loading}
@@ -614,16 +663,63 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
                   )}
                 </TouchableOpacity>
               </View>
-              <View style={styles.inputFooter}>
-                <Text style={styles.charCount}>
-                  {input.length} / {MAX_INPUT_LENGTH}
-                </Text>
-              </View>
             </View>
           </View>
         </KeyboardAvoidingView>
       </SafeAreaView>
 
+      {/* Conversation history modal */}
+      <Modal
+        visible={historyModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setHistoryModalVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setHistoryModalVisible(false)}
+        >
+          <View style={styles.historyModalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.historyModalHeader}>
+              <Text style={styles.historyModalTitle}>Conversation history</Text>
+              <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={12}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            {loadingHistory ? (
+              <View style={styles.historyLoading}>
+                <ActivityIndicator size="small" color={COLORS.primary} />
+                <Text style={styles.historyLoadingText}>Loading...</Text>
+              </View>
+            ) : conversations.length === 0 ? (
+              <View style={styles.historyEmpty}>
+                <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textMuted} />
+                <Text style={styles.historyEmptyText}>No previous conversations</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.historyList} keyboardShouldPersistTaps="handled">
+                {conversations.map((conv) => (
+                  <TouchableOpacity
+                    key={conv.id}
+                    style={[
+                      styles.historyItem,
+                      currentConversationId === conv.id && styles.historyItemActive,
+                    ]}
+                    onPress={() => selectConversation(conv)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.historyItemTitle} numberOfLines={1}>{conv.title}</Text>
+                    <Text style={styles.historyItemMeta}>
+                      {conv.messageCount} message{conv.messageCount !== 1 ? 's' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -647,21 +743,15 @@ const styles = StyleSheet.create({
   headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-    marginRight: SPACING.xs,
-  },
-  headerTextBlock: {
+    gap: SPACING.md,
     flex: 1,
     minWidth: 0,
     flexShrink: 1,
   },
-  iconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.md,
+  avatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: COLORS.backgroundCard,
     alignItems: 'center',
     justifyContent: 'center',
@@ -669,20 +759,64 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     flexShrink: 0,
   },
+  robotHead: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.backgroundElevated,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  robotEye: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.primary,
+  },
+  headerTextBlock: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
   title: {
-    fontSize: FONT_SIZES.title,
+    fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    letterSpacing: -0.4,
+    letterSpacing: -0.2,
   },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
     marginTop: 2,
-    flexShrink: 1,
-    lineHeight: 18,
-    flexWrap: 'wrap',
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.success,
+  },
+  statusText: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.success,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: COLORS.backgroundCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   tokenChip: {
     flexDirection: 'row',
@@ -745,7 +879,7 @@ const styles = StyleSheet.create({
   chatContent: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
-    paddingBottom: SPACING.xl + 20,
+    paddingBottom: SPACING.xxl + 24,
     flexGrow: 1,
   },
   welcome: { 
@@ -830,54 +964,26 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.regular,
     color: COLORS.textMuted,
   },
-  suggestionsSection: {
-    width: '100%',
-    marginTop: SPACING.lg,
-  },
-  suggestionsLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMuted,
+  messageWrapper: {
     marginBottom: SPACING.md,
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  suggestionChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.xs,
-  },
-  suggestionChip: {
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.backgroundCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minHeight: 38,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...SHADOWS.card,
-  },
-  suggestionChipText: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.medium,
-    color: COLORS.textSecondary,
-  },
-  suggestionChipDisabled: {
-    opacity: 0.5,
-  },
-  suggestionChipTextDisabled: {
-    color: COLORS.textMuted,
   },
   messageContainer: {
     flexDirection: 'row',
-    marginBottom: SPACING.lg,
     alignItems: 'flex-end',
     gap: SPACING.sm,
+  },
+  timestamp: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginTop: SPACING.xs,
+  },
+  timestampBot: {
+    marginLeft: 44 + SPACING.sm,
+  },
+  timestampUser: {
+    marginRight: 44 + SPACING.sm,
+    textAlign: 'right',
   },
   messageUser: {
     justifyContent: 'flex-end',
@@ -890,9 +996,9 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: COLORS.primaryMuted,
+    backgroundColor: COLORS.backgroundCard,
     borderWidth: 1,
-    borderColor: COLORS.primary + '20',
+    borderColor: COLORS.border,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
@@ -914,23 +1020,20 @@ const styles = StyleSheet.create({
   bubbleUser: {
     maxWidth: '82%',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    borderTopRightRadius: BORDER_RADIUS.sm,
     backgroundColor: COLORS.primary,
     alignSelf: 'flex-end',
   },
   bubbleBot: {
     maxWidth: '82%',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
+    paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.lg,
-    borderTopLeftRadius: BORDER_RADIUS.sm,
-    backgroundColor: COLORS.backgroundCard,
+    backgroundColor: COLORS.backgroundElevated,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
+    borderColor: COLORS.border,
     alignSelf: 'flex-start',
-    ...SHADOWS.card,
   },
   loadingBubble: {
     flexDirection: 'row',
@@ -939,17 +1042,15 @@ const styles = StyleSheet.create({
   },
   bubbleText: {
     fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.reading,
+    fontFamily: FONTS.regular,
     color: COLORS.textPrimary,
-    lineHeight: 24,
-    letterSpacing: 0.1,
+    lineHeight: 22,
   },
   bubbleTextUser: {
     fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.reading,
+    fontFamily: FONTS.regular,
     color: COLORS.background,
-    lineHeight: 24,
-    letterSpacing: 0.1,
+    lineHeight: 22,
   },
   loadingText: {
     fontSize: FONT_SIZES.sm,
@@ -958,51 +1059,66 @@ const styles = StyleSheet.create({
   },
   inputRow: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: Platform.OS === 'ios' ? SPACING.sm : SPACING.md,
+    paddingTop: SPACING.xl,
+    paddingBottom: Platform.OS === 'ios' ? SPACING.xxl : SPACING.xl,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.background,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   inputWrapper: {
     flex: 1,
+    width: '100%',
   },
   inputRowInner: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: SPACING.sm,
+    alignItems: 'center',
+    gap: SPACING.lg,
+    width: '100%',
+  },
+  plusButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.backgroundCard,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  inputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    minHeight: 44,
   },
   input: {
     flex: 1,
-    backgroundColor: COLORS.backgroundCard,
-    borderRadius: BORDER_RADIUS.lg,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    paddingVertical: SPACING.md,
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.regular,
     color: COLORS.textPrimary,
     maxHeight: 100,
     minHeight: 44,
-    borderWidth: 1,
-    borderColor: COLORS.border,
     textAlignVertical: 'top',
+  },
+  micButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    padding: SPACING.xs,
   },
   inputDisabled: {
     opacity: 0.5,
-    backgroundColor: COLORS.backgroundCard + '80',
-  },
-  inputFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingTop: SPACING.xs + 2,
-    paddingBottom: SPACING.xs,
-    paddingRight: SPACING.xs + 44 + SPACING.sm, // Align with input (account for button width + gap)
-  },
-  charCount: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMuted,
-    lineHeight: 16,
   },
   sendButton: {
     width: 44,
@@ -1012,11 +1128,86 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    marginBottom: 0,
+    alignSelf: 'center',
   },
   sendButtonDisabled: {
     backgroundColor: COLORS.backgroundCard,
     opacity: 0.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  historyModalContent: {
+    backgroundColor: COLORS.background,
+    borderTopLeftRadius: BORDER_RADIUS.xl,
+    borderTopRightRadius: BORDER_RADIUS.xl,
+    maxHeight: '70%',
+    paddingBottom: SPACING.xl,
+  },
+  historyModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  historyModalTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+  },
+  historyLoading: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  historyLoadingText: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+  },
+  historyEmpty: {
+    padding: SPACING.xl,
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  historyEmptyText: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+  },
+  historyList: {
+    maxHeight: 400,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+  },
+  historyItem: {
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    marginBottom: SPACING.xs,
+    backgroundColor: COLORS.backgroundCard,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  historyItemActive: {
+    borderColor: COLORS.primary,
+    backgroundColor: COLORS.primary + '12',
+  },
+  historyItemTitle: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.medium,
+    color: COLORS.textPrimary,
+  },
+  historyItemMeta: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginTop: SPACING.xs,
   },
   // Sidebar styles
   sidebarOverlay: {

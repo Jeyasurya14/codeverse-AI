@@ -1,49 +1,78 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
-import { useTokens } from '../context/TokenContext';
 import { useBookmarks } from '../context/BookmarksContext';
+import { useProgress } from '../context/ProgressContext';
 import { MOCK_ARTICLES } from '../data/mockContent';
-import { NeonButton } from '../components/NeonButton';
-import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, AI_TOKENS } from '../constants/theme';
+import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, SHADOWS } from '../constants/theme';
 import { getConversations } from '../services/api';
 
 export function DashboardScreen({ navigation }: any) {
   const { user, signOut } = useAuth();
-  const { freeUsed, freeRemaining, purchasedTotal, purchasedUsed, totalAvailable } = useTokens();
   const { bookmarks } = useBookmarks();
+  const { completedArticleIds } = useProgress();
   const [conversationCount, setConversationCount] = useState(0);
-  const [loadingConversations, setLoadingConversations] = useState(false);
 
-  const bookmarkedArticles = bookmarks
-    .map((b) => {
-      const article = (MOCK_ARTICLES[b.languageId] ?? []).find((a) => a.id === b.articleId);
-      return article ? { ...b, article } : null;
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+  const bookmarkedArticles = useMemo(
+    () =>
+      bookmarks
+        .map((b) => {
+          const article = (MOCK_ARTICLES[b.languageId] ?? []).find((a) => a.id === b.articleId);
+          return article ? { ...b, article } : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null),
+    [bookmarks]
+  );
 
-  // Load conversation count on mount and when screen is focused
-  useEffect(() => {
-    if (user) {
-      loadConversationCount();
-    }
-    
-    // Refresh data when screen comes into focus
-    const unsubscribe = navigation.addListener('focus', () => {
-      if (user) {
-        loadConversationCount();
-      }
+  const completedCount = completedArticleIds.length;
+  const level = Math.max(1, Math.floor(completedCount / 5) + 1);
+  const xp = completedCount * 100;
+  const certs = Math.floor(completedCount / 15);
+  // Streak: derive from activity (completed articles). Without date storage, use progress-based streak.
+  const streakDays = completedCount === 0 ? 0 : Math.min(30, Math.max(1, Math.floor(completedCount / 2)));
+  const levelTitle = level <= 2 ? 'Beginner' : level <= 5 ? 'Learner' : level <= 8 ? 'Developer' : level <= 12 ? 'Code Master' : 'Architect';
+
+  const skillRadarValues = useMemo(() => {
+    const langIds = Object.keys(MOCK_ARTICLES);
+    const totals: Record<string, number> = {};
+    let maxTotal = 0;
+    langIds.forEach((id) => {
+      const articles = MOCK_ARTICLES[id] ?? [];
+      const completed = articles.filter((a) => completedArticleIds.includes(a.id)).length;
+      totals[id] = articles.length > 0 ? (completed / articles.length) * 100 : 0;
+      if (articles.length > 0) maxTotal = Math.max(maxTotal, completed);
     });
-    
+    const js = totals['1'] ?? 0;
+    const py = totals['2'] ?? 0;
+    const cssUi = (totals['4'] ?? 0) * 0.5 + (totals['3'] ?? 0) * 0.5;
+    return { js, py, cssUi };
+  }, [completedArticleIds]);
+
+  const achievements = useMemo(() => {
+    const n = completedCount;
+    return [
+      { id: 'fast', label: 'FAST LEARNER', icon: 'medal', unlocked: n >= 1, color: COLORS.secondary },
+      { id: 'code', label: 'CODE MASTER', icon: 'code-slash', unlocked: n >= 10, color: COLORS.primary },
+      { id: 'algo', label: 'ALGORITHM HERO', icon: 'star', unlocked: n >= 25, color: COLORS.textMuted },
+    ];
+  }, [completedCount]);
+
+  const subscriptionPlan = user?.subscriptionPlan ?? 'free';
+  const planDisplayLabel = subscriptionPlan === 'pro' ? 'Pro' : subscriptionPlan === 'free' ? 'Free' : 'Other';
+  const isPro = subscriptionPlan === 'pro';
+
+  useEffect(() => {
+    if (user) loadConversationCount();
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (user) loadConversationCount();
+    });
     return unsubscribe;
   }, [user, navigation]);
 
   const loadConversationCount = async () => {
-    setLoadingConversations(true);
     try {
       const { getAuthTokens } = await import('../services/api');
       const tokens = getAuthTokens();
@@ -51,360 +80,177 @@ export function DashboardScreen({ navigation }: any) {
         const result = await getConversations();
         setConversationCount(result.conversations?.length || 0);
       }
-    } catch (e) {
-      // Silently fail - expected if not authenticated
+    } catch {
       setConversationCount(0);
-    } finally {
-      setLoadingConversations(false);
     }
   };
-
-  // Calculate token usage percentage (safe division)
-  const freeUsagePercent = AI_TOKENS.FREE_LIMIT > 0 
-    ? Math.min(100, (freeUsed / AI_TOKENS.FREE_LIMIT) * 100)
-    : 0;
-  const purchasedRemaining = Math.max(0, purchasedTotal - purchasedUsed);
-  
-  // Quick stats
-  const stats = [
-    {
-      label: 'AI Conversations',
-      value: loadingConversations ? '...' : (conversationCount || 0).toString(),
-      icon: 'chatbubbles',
-      color: COLORS.primary,
-      onPress: () => {
-        try {
-          navigation.navigate('AIMentor');
-        } catch (e) {
-          if (__DEV__) console.warn('Navigation error:', e);
-        }
-      },
-    },
-    {
-      label: 'Bookmarks',
-      value: (bookmarks?.length || 0).toString(),
-      icon: 'bookmark',
-      color: COLORS.secondary,
-      onPress: () => {
-        try {
-          navigation.navigate('Programming');
-        } catch (e) {
-          if (__DEV__) console.warn('Navigation error:', e);
-        }
-      },
-    },
-    {
-      label: 'AI Tokens',
-      value: (totalAvailable || 0).toString(),
-      icon: 'flash',
-      color: COLORS.warning,
-      onPress: () => {
-        try {
-          navigation.navigate('RechargeTokens');
-        } catch (e) {
-          if (__DEV__) console.warn('Navigation error:', e);
-        }
-      },
-    },
-  ];
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top']}>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Welcome back,</Text>
-            <Text style={styles.title}>{user?.name ?? 'User'}</Text>
-          </View>
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => {
-              try {
-                navigation.navigate('RechargeTokens');
-              } catch (e) {
-                if (__DEV__) console.warn('Navigation error:', e);
-              }
-            }}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="settings-outline" size={24} color={COLORS.textSecondary} />
+        <View style={styles.topBar}>
+          <TouchableOpacity style={styles.topBarBtn} onPress={() => navigation.goBack()}>
+            <Ionicons name="chevron-back" size={24} color={COLORS.textPrimary} />
           </TouchableOpacity>
+          <Text style={styles.topBarTitle}>Codeverse</Text>
+          <View style={styles.topBarRight}>
+            <TouchableOpacity style={styles.topBarBtn} onPress={() => {}}>
+              <Ionicons name="share-outline" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.topBarBtn} onPress={() => {}}>
+              <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
         </View>
-        <ScrollView
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Quick Stats */}
-          <View style={styles.statsContainer}>
-            {stats.map((stat, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.statCard}
-                onPress={stat.onPress}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.statIconContainer, { backgroundColor: stat.color + '20' }]}>
-                  <Ionicons name={stat.icon as any} size={24} color={stat.color} />
+
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.profileHeader}>
+            <View style={styles.avatarWrap}>
+              <View style={styles.avatarRing}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{(user?.name ?? 'U').charAt(0).toUpperCase()}</Text>
                 </View>
-                <Text style={styles.statValue}>{stat.value}</Text>
-                <Text style={styles.statLabel}>{stat.label}</Text>
-              </TouchableOpacity>
-            ))}
+              </View>
+              {isPro && (
+                <View style={styles.proBadge}>
+                  <Text style={styles.proBadgeText}>PRO</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.profileName}>{user?.name ?? 'User'}</Text>
+            {user?.email ? (
+              <Text style={styles.profileEmail} numberOfLines={1}>{user.email}</Text>
+            ) : null}
+            <View style={styles.levelRow}>
+              <View style={styles.levelBadge}>
+                <Text style={styles.levelBadgeText}>LEVEL {level}</Text>
+              </View>
+              <Text style={styles.profileTitle}>{levelTitle} · {planDisplayLabel}</Text>
+            </View>
           </View>
 
-          {/* Profile Card */}
-          <Card style={styles.card} elevated>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleRow}>
-                <View style={styles.cardTitleIcon}>
-                  <Ionicons name="person-circle" size={20} color={COLORS.primary} />
-                </View>
-                <Text style={styles.cardTitle}>Profile</Text>
-              </View>
+          <View style={styles.statsCard}>
+            <View style={[styles.statCol, styles.statColBorder]}>
+              <Ionicons name="flame" size={22} color={COLORS.secondary} />
+              <Text style={styles.statLabel}>Streak</Text>
+              <Text style={styles.statValue}>{streakDays} {streakDays === 1 ? 'Day' : 'Days'}</Text>
             </View>
-            <View style={styles.row}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>
-                  {(user?.name ?? 'U')[0].toUpperCase()}
-                </Text>
-              </View>
-              <View style={styles.profileInfo}>
-                <Text style={styles.name} numberOfLines={1}>
-                  {user?.name ?? 'User'}
-                </Text>
-                <Text style={styles.email} numberOfLines={1}>
-                  {user?.email ?? ''}
-                </Text>
-                <View style={styles.providerBadge}>
-                  <Ionicons 
-                    name={user?.provider === 'email' ? 'mail' : 'logo-google'} 
-                    size={12} 
-                    color={COLORS.textMuted} 
-                  />
-                  <Text style={styles.provider}>
-                    {user?.provider === 'email' ? 'Email' : 'Google'}
-                  </Text>
-                </View>
-              </View>
+            <View style={[styles.statCol, styles.statColBorder]}>
+              <Ionicons name="flash" size={22} color={COLORS.primary} />
+              <Text style={styles.statLabel}>XP</Text>
+              <Text style={styles.statValue}>{xp.toLocaleString()}</Text>
             </View>
-          </Card>
+            <View style={styles.statCol}>
+              <Ionicons name="shield-checkmark" size={22} color={COLORS.secondary} />
+              <Text style={styles.statLabel}>Certs</Text>
+              <Text style={styles.statValue}>{certs}</Text>
+            </View>
+          </View>
 
-          {/* AI Tokens Card */}
-          <Card style={styles.card} elevated>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleRow}>
-                <View style={[styles.cardTitleIcon, { backgroundColor: COLORS.warningMuted }]}>
-                  <Ionicons name="flash" size={16} color={COLORS.warning} />
+          <View style={styles.section}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="bar-chart" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionTitle}>Skill Radar</Text>
+            </View>
+            <View style={styles.radarCard}>
+              <View style={styles.radarPlaceholder}>
+                <View style={styles.radarAxis}>
+                  <Text style={styles.radarAxisLabel}>JAVASCRIPT</Text>
+                  <View style={[styles.radarFill, { height: `${skillRadarValues.js}%`, alignSelf: 'center' }]} />
                 </View>
-                <View style={styles.cardTitleBlock}>
-                  <Text style={styles.cardTitle} numberOfLines={1}>AI Tokens</Text>
-                  <Text style={styles.cardSubtitle} numberOfLines={1}>Track your usage</Text>
+                <View style={styles.radarAxis}>
+                  <Text style={styles.radarAxisLabel}>CSS/UI</Text>
+                  <View style={[styles.radarFill, { height: `${skillRadarValues.cssUi}%` }]} />
                 </View>
-              </View>
-              <View style={styles.tokenBadge}>
-                <Text style={styles.tokenBadgeText}>{totalAvailable}</Text>
+                <View style={styles.radarAxis}>
+                  <Text style={styles.radarAxisLabel}>PYTHON</Text>
+                  <View style={[styles.radarFill, { height: `${skillRadarValues.py}%` }]} />
+                </View>
               </View>
             </View>
-            
-            {/* Free Tokens Progress */}
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>Free Tokens</Text>
-                <Text style={styles.progressValue}>
-                  {freeRemaining} / {AI_TOKENS.FREE_LIMIT} remaining
-                </Text>
-              </View>
-              <View style={styles.progressBarContainer}>
-                <View 
-                  style={[
-                    styles.progressBar, 
-                    { 
-                      width: `${Math.min(freeUsagePercent, 100)}%`,
-                      backgroundColor: freeUsagePercent > 80 ? COLORS.error : COLORS.primary,
-                    }
-                  ]} 
-                />
-              </View>
-              <Text style={styles.progressSubtext}>
-                {freeUsed} tokens used
-              </Text>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="trophy" size={18} color={COLORS.secondary} />
+              <Text style={styles.sectionTitle}>Achievements</Text>
+              <TouchableOpacity onPress={() => {}}><Text style={styles.viewAll}>View All</Text></TouchableOpacity>
             </View>
-
-            {/* Purchased Tokens */}
-            {purchasedTotal > 0 && (
-              <View style={styles.progressSection}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressLabel}>Purchased Tokens</Text>
-                  <Text style={styles.progressValue}>
-                    {purchasedRemaining} / {purchasedTotal} remaining
-                  </Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.achievementsScroll}>
+              {achievements.map((a) => (
+                <View key={a.id} style={styles.achievementCard}>
+                  <View style={[styles.achievementIconWrap, { borderColor: a.unlocked ? a.color : COLORS.textMuted }]}>
+                    <Ionicons name={a.icon as any} size={28} color={a.unlocked ? a.color : COLORS.textMuted} />
+                  </View>
+                  <Text style={styles.achievementLabel}>{a.label}</Text>
                 </View>
-                <View style={styles.progressBarContainer}>
-                  <View 
-                    style={[
-                      styles.progressBar, 
-                      { 
-                        width: `${Math.min(100, Math.max(0, (purchasedRemaining / purchasedTotal) * 100))}%`,
-                        backgroundColor: COLORS.secondary,
-                      }
-                    ]} 
-                  />
-                </View>
-              </View>
-            )}
+              ))}
+            </ScrollView>
+          </View>
 
-            <NeonButton
-              title="Recharge Tokens"
-              onPress={() => {
-                try {
-                  navigation.navigate('RechargeTokens');
-                } catch (e) {
-                  if (__DEV__) console.warn('Navigation error:', e);
-                }
-              }}
-              variant="outline"
-              style={styles.rechargeBtn}
-            />
-          </Card>
-
-          {/* Bookmarks Card */}
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Bookmarks</Text>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{bookmarks?.length || 0}</Text>
-              </View>
+          <View style={styles.section}>
+            <View style={styles.sectionTitleRow}>
+              <Ionicons name="bookmark" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionTitle}>Saved Articles</Text>
             </View>
-            {!bookmarkedArticles || bookmarkedArticles.length === 0 ? (
+            {!bookmarkedArticles.length ? (
               <EmptyState
                 icon="bookmark-outline"
                 title="No bookmarks yet"
-                subtitle="Save articles you want to read later by tapping the bookmark icon"
+                subtitle="Save articles to read later"
                 actionLabel="Browse Articles"
-                onAction={() => {
-                  try {
-                    navigation.navigate('Programming');
-                  } catch (e) {
-                    if (__DEV__) console.warn('Navigation error:', e);
-                  }
-                }}
+                onAction={() => navigation.navigate('Programming')}
               />
             ) : (
-              <>
-                {bookmarkedArticles?.slice(0, 5).map(({ article, languageName, articleTitle }) => (
-                  <TouchableOpacity
-                    key={article.id}
-                    style={styles.bookmarkRow}
-                    onPress={() => {
-                      try {
-                        navigation.navigate('ArticleDetail', { article, languageName });
-                      } catch (e) {
-                        if (__DEV__) console.warn('Navigation error:', e);
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.bookmarkIconWrap}>
-                      <Ionicons name="bookmark" size={16} color={COLORS.secondary} />
-                    </View>
-                    <View style={styles.bookmarkText}>
-                      <Text style={styles.bookmarkTitle} numberOfLines={1}>{articleTitle}</Text>
-                      <Text style={styles.bookmarkMeta}>{languageName}</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+              bookmarkedArticles.slice(0, 5).map(({ article, languageName, articleTitle }) => (
+                <TouchableOpacity
+                  key={article.id}
+                  style={styles.savedCard}
+                  onPress={() => navigation.navigate('ArticleDetail', { article, languageName })}
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.savedThumb} />
+                  <View style={styles.savedBody}>
+                    <Text style={styles.savedTitle} numberOfLines={1}>{articleTitle}</Text>
+                    <Text style={styles.savedMeta}>AI Guided • {article.readTimeMinutes} min read</Text>
+                  </View>
+                  <TouchableOpacity style={styles.savedMore} onPress={() => {}}>
+                    <Ionicons name="ellipsis-vertical" size={18} color={COLORS.textMuted} />
                   </TouchableOpacity>
-                ))}
-                {bookmarkedArticles.length > 5 && (
-                  <TouchableOpacity
-                    style={styles.viewAllButton}
-                    onPress={() => {
-                    try {
-                      navigation.navigate('Programming');
-                    } catch (e) {
-                      if (__DEV__) console.warn('Navigation error:', e);
-                    }
-                  }}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.viewAllText}>
-                      View all {bookmarkedArticles.length} bookmarks
-                    </Text>
-                    <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
-                  </TouchableOpacity>
-                )}
-              </>
+                </TouchableOpacity>
+              ))
             )}
-          </Card>
+          </View>
 
-          {/* Quick Actions */}
-          <Card style={styles.card} elevated>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleRow}>
-                <View style={[styles.cardTitleIcon, { backgroundColor: COLORS.primaryMuted }]}>
-                  <Ionicons name="flash" size={16} color={COLORS.primary} />
-                </View>
-                <Text style={styles.cardTitle}>Quick Actions</Text>
+          <View style={styles.section}>
+            <View style={styles.planRow}>
+              <Ionicons name="pricetag-outline" size={20} color={COLORS.textMuted} />
+              <Text style={styles.planRowLabel}>Plan</Text>
+              <View style={[styles.planChip, isPro && styles.planChipPro]}>
+                <Text style={[styles.planChipText, isPro && styles.planChipTextPro]}>{planDisplayLabel}</Text>
               </View>
             </View>
-            <View style={styles.quickActions}>
-              <TouchableOpacity
-                style={styles.quickAction}
-                onPress={() => {
-                  try {
-                    navigation.navigate('AIMentor');
-                  } catch (e) {
-                    if (__DEV__) console.warn('Navigation error:', e);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: COLORS.primary + '20' }]}>
-                  <Ionicons name="sparkles" size={24} color={COLORS.primary} />
-                </View>
-                <Text style={styles.quickActionLabel}>AI Mentor</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickAction}
-                    onPress={() => {
-                      try {
-                        navigation.navigate('Programming');
-                      } catch (e) {
-                        if (__DEV__) console.warn('Navigation error:', e);
-                      }
-                    }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: COLORS.secondary + '20' }]}>
-                  <Ionicons name="code-slash" size={24} color={COLORS.secondary} />
-                </View>
-                <Text style={styles.quickActionLabel}>Learn</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.quickAction}
-                onPress={() => {
-                  try {
-                    navigation.navigate('RechargeTokens');
-                  } catch (e) {
-                    if (__DEV__) console.warn('Navigation error:', e);
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.quickActionIcon, { backgroundColor: COLORS.warning + '20' }]}>
-                  <Ionicons name="flash" size={24} color={COLORS.warning} />
-                </View>
-                <Text style={styles.quickActionLabel}>Recharge</Text>
-              </TouchableOpacity>
-            </View>
-          </Card>
-
-          <NeonButton 
-            title="Sign Out" 
-            onPress={signOut} 
-            variant="outline" 
-            style={styles.signOut} 
-          />
+            <TouchableOpacity style={styles.settingsRow} onPress={() => navigation.navigate('RechargeTokens')} activeOpacity={0.7}>
+              <Ionicons name="flash" size={22} color={COLORS.primary} />
+              <Text style={styles.settingsRowText}>Recharge tokens</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.settingsRow} onPress={() => {}} activeOpacity={0.7}>
+              <Ionicons name="settings-outline" size={22} color={COLORS.textPrimary} />
+              <Text style={styles.settingsRowText}>Profile Settings</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.settingsRow} onPress={() => {}} activeOpacity={0.7}>
+              <Ionicons name="shield-outline" size={22} color={COLORS.textPrimary} />
+              <Text style={styles.settingsRowText}>Security & Privacy</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.settingsRow, styles.signOutRow]} onPress={signOut} activeOpacity={0.7}>
+              <Ionicons name="log-out-outline" size={22} color={COLORS.error} />
+              <Text style={styles.signOutText}>Log Out</Text>
+              <Ionicons name="chevron-forward" size={20} color={COLORS.error} />
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -414,307 +260,289 @@ export function DashboardScreen({ navigation }: any) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   safe: { flex: 1 },
-  header: { 
+  topBar: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: SPACING.lg, 
-    paddingVertical: SPACING.md 
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  greeting: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  title: {
-    fontSize: FONT_SIZES.title,
+  topBarBtn: { padding: SPACING.xs },
+  topBarTitle: {
+    fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    letterSpacing: -0.4,
   },
-  settingsButton: {
-    padding: SPACING.xs,
-  },
+  topBarRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
-  card: { marginBottom: SPACING.lg },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  profileHeader: {
     alignItems: 'center',
-    marginBottom: SPACING.lg,
-    gap: SPACING.md,
+    paddingVertical: SPACING.xl,
   },
-  cardTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    flex: 1,
-    minWidth: 0,
-  },
-  cardTitleIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: BORDER_RADIUS.sm,
-    backgroundColor: COLORS.primaryMuted,
+  avatarWrap: { position: 'relative' },
+  avatarRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    borderWidth: 3,
+    borderColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cardTitleBlock: {
-    flex: 1,
-    minWidth: 0,
-  },
-  cardTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    letterSpacing: -0.3,
-  },
-  badge: {
-    backgroundColor: COLORS.backgroundElevated,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  badgeText: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-  },
-  cardSubtitle: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginTop: SPACING.xs / 2,
-  },
-  tokenBadge: {
-    backgroundColor: COLORS.warningMuted,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.warning + '25',
-    minWidth: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  tokenBadgeText: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.bold,
-    color: COLORS.warning,
-    letterSpacing: -0.3,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.lg,
-  },
-  statCard: {
-    flex: 1,
+  avatar: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
     backgroundColor: COLORS.backgroundCard,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    minHeight: 110,
-    justifyContent: 'center',
-  },
-  statIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: BORDER_RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: SPACING.sm,
   },
-  statValue: {
+  avatarText: {
+    fontSize: 36,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+  },
+  proBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.full,
+  },
+  proBadgeText: {
+    fontSize: 10,
+    fontFamily: FONTS.bold,
+    color: COLORS.background,
+  },
+  profileName: {
     fontSize: FONT_SIZES.xxl,
     fontFamily: FONTS.bold,
     color: COLORS.textPrimary,
-    marginBottom: SPACING.xs / 2,
-    letterSpacing: -0.4,
+    marginTop: SPACING.md,
+  },
+  profileEmail: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginTop: SPACING.xs,
+  },
+  levelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  levelBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  levelBadgeText: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+  },
+  profileTitle: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+  },
+  statsCard: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginBottom: SPACING.xl,
+    ...SHADOWS.card,
+  },
+  statCol: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: SPACING.md,
+  },
+  statColBorder: {
+    borderRightWidth: 1,
+    borderRightColor: COLORS.border,
   },
   statLabel: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
     color: COLORS.textMuted,
-    textAlign: 'center',
-    letterSpacing: 0.2,
+    marginTop: SPACING.xs,
   },
-  row: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
-  avatar: {
+  statValue: {
+    fontSize: FONT_SIZES.lg,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    marginTop: 2,
+  },
+  section: { marginBottom: SPACING.xl },
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  sectionTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+  viewAll: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    color: COLORS.primary,
+  },
+  radarCard: {
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.lg,
+    minHeight: 140,
+  },
+  radarPlaceholder: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    height: 100,
+  },
+  radarAxis: {
+    alignItems: 'center',
+    width: 80,
+  },
+  radarAxisLabel: {
+    fontSize: 9,
+    fontFamily: FONTS.bold,
+    color: COLORS.textMuted,
+    marginBottom: SPACING.xs,
+  },
+  radarFill: {
+    width: 24,
+    minHeight: 4,
+    backgroundColor: COLORS.primary,
+    borderRadius: BORDER_RADIUS.xs,
+  },
+  achievementsScroll: {
+    paddingRight: SPACING.lg,
+    gap: SPACING.md,
+  },
+  achievementCard: {
+    alignItems: 'center',
+    width: 88,
+  },
+  achievementIconWrap: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 2,
-    borderColor: COLORS.primary + '40',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.xs,
   },
-  avatarText: {
-    fontSize: FONT_SIZES.xxl,
+  achievementLabel: {
+    fontSize: 10,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-  },
-  profileInfo: { flex: 1, minWidth: 0 },
-  name: { 
-    fontSize: FONT_SIZES.lg, 
-    fontFamily: FONTS.primary, 
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  email: { 
-    fontSize: FONT_SIZES.sm, 
-    fontFamily: FONTS.regular, 
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
-  },
-  providerBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    alignSelf: 'flex-start',
-  },
-  provider: { 
-    fontSize: FONT_SIZES.xs, 
-    fontFamily: FONTS.regular, 
     color: COLORS.textMuted,
-  },
-  progressSection: {
-    marginBottom: SPACING.md,
-  },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  progressLabel: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-  },
-  progressValue: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: COLORS.backgroundElevated,
-    borderRadius: BORDER_RADIUS.full,
-    overflow: 'hidden',
-    marginBottom: SPACING.xs,
-  },
-  progressBar: {
-    height: '100%',
-    borderRadius: BORDER_RADIUS.full,
-  },
-  progressSubtext: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-  },
-  rechargeBtn: { marginTop: SPACING.sm },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xl,
-  },
-  emptyStateTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.xs,
-  },
-  emptyStateText: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
     textAlign: 'center',
-    marginBottom: SPACING.lg,
-    paddingHorizontal: SPACING.lg,
   },
-  emptyStateButton: {
-    marginTop: SPACING.sm,
-  },
-  bookmarkRow: {
+  savedCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: SPACING.md,
-  },
-  bookmarkIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.sm,
-    backgroundColor: COLORS.backgroundElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  bookmarkText: { flex: 1, minWidth: 0 },
-  bookmarkTitle: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  bookmarkMeta: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-  },
-  viewAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-  },
-  viewAllText: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.primary,
-    color: COLORS.primary,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  quickAction: {
-    flex: 1,
-    alignItems: 'center',
-    padding: SPACING.md,
-    backgroundColor: COLORS.backgroundElevated,
+    backgroundColor: COLORS.backgroundCard,
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
-    minHeight: 100,
-    justifyContent: 'center',
-  },
-  quickActionIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: COLORS.border,
+    padding: SPACING.sm,
     marginBottom: SPACING.sm,
   },
-  quickActionLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    letterSpacing: -0.1,
+  savedThumb: {
+    width: 56,
+    height: 56,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: COLORS.backgroundElevated,
+    marginRight: SPACING.md,
   },
-  signOut: { marginTop: SPACING.lg },
+  savedBody: { flex: 1, minWidth: 0 },
+  savedTitle: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.medium,
+    color: COLORS.textPrimary,
+  },
+  savedMeta: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  savedMore: { padding: SPACING.xs },
+  planRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.md,
+  },
+  planRowLabel: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
+    color: COLORS.textPrimary,
+    flex: 1,
+  },
+  planChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.backgroundElevated,
+  },
+  planChipPro: {
+    backgroundColor: COLORS.secondary,
+  },
+  planChipText: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.bold,
+    color: COLORS.textMuted,
+  },
+  planChipTextPro: {
+    color: COLORS.background,
+  },
+  settingsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.backgroundCard,
+    borderRadius: BORDER_RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    gap: SPACING.md,
+  },
+  settingsRowText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
+    color: COLORS.textPrimary,
+  },
+  signOutRow: {
+    backgroundColor: COLORS.error + '18',
+    borderColor: COLORS.error + '40',
+  },
+  signOutText: {
+    flex: 1,
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.medium,
+    color: COLORS.error,
+  },
 });

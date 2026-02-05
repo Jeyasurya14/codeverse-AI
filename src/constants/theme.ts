@@ -125,15 +125,18 @@ export const SHADOWS = {
   },
 } as const;
 
+/** Set to false when Razorpay (or other payment) is live. */
+export const PAYMENT_COMING_SOON = true;
+
 export const AI_TOKENS = {
   FREE_LIMIT: 300, // Match backend constant
   TOKENS_PER_MESSAGE: 10, // Fixed cost per AI message
   MIN_TOKENS_TO_SEND: 10, // Minimum tokens required to send a message
   RECHARGE_PACKS: [
-    { id: 'starter', tokens: 500, price: 0.99, label: 'Starter', popular: false },
-    { id: 'learner', tokens: 1500, price: 2.99, label: 'Learner', popular: true },
-    { id: 'pro', tokens: 5000, price: 7.99, label: 'Pro', popular: false },
-    { id: 'unlimited', tokens: 15000, price: 14.99, label: 'Unlimited', popular: false },
+    { id: 'starter', tokens: 500, price: 0.99, priceInINR: 79, label: 'Starter', popular: false },
+    { id: 'learner', tokens: 1500, price: 2.99, priceInINR: 249, label: 'Learner', popular: true },
+    { id: 'pro', tokens: 5000, price: 7.99, priceInINR: 649, label: 'Pro', popular: false },
+    { id: 'unlimited', tokens: 15000, price: 14.99, priceInINR: 1249, label: 'Unlimited', popular: false },
   ],
 } as const;
 
