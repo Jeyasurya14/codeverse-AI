@@ -2,12 +2,20 @@ import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { View, Text, ActivityIndicator, StyleSheet, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, Platform, Image, Dimensions } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  withRepeat,
+  Easing
+} from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '../context/AuthContext';
 import type { User } from '../types';
-import { COLORS, FONTS, SPACING } from '../constants/theme';
+import { COLORS, FONTS, SPACING, FONT_SIZES } from '../constants/theme';
 
 // Support both exp:// (Expo Go) and codeverse-ai:// (standalone) deep links
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -160,18 +168,7 @@ export function RootNavigator() {
   }, [user, isOnboardingDone]);
 
   if (isLoading) {
-    return (
-      <View style={styles.loading}>
-        <View style={styles.logoContainer}>
-          <Image
-            source={require('../../assets/codeverse-logo.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-        </View>
-        <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
-      </View>
-    );
+    return <RootLoadingScreen />;
   }
 
   return (
@@ -197,23 +194,165 @@ export function RootNavigator() {
   );
 }
 
+// Custom animated loading spinner component
+function AnimatedLoader() {
+  const rotation = useSharedValue(0);
+  
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, {
+        duration: 1500,
+        easing: Easing.linear,
+      }),
+      -1,
+      false
+    );
+  }, []);
+  
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${rotation.value}deg` }],
+    };
+  });
+  
+  return (
+    <Animated.View style={[styles.loaderContainer, animatedStyle]}>
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary, COLORS.primary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.loaderGradient}
+      />
+    </Animated.View>
+  );
+}
+
+// Root loading screen component matching App.tsx design
+function RootLoadingScreen() {
+  const logoOpacity = useSharedValue(0);
+  const logoScale = useSharedValue(0.8);
+  const taglineOpacity = useSharedValue(0);
+  const brandNameOpacity = useSharedValue(0);
+  
+  useEffect(() => {
+    // Logo animation: fade in + scale
+    logoOpacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.ease) });
+    logoScale.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.ease) });
+    
+    // Brand name animation: fade in after logo
+    setTimeout(() => {
+      brandNameOpacity.value = withTiming(1, { duration: 400 });
+    }, 300);
+    
+    // Tagline animation: fade in after brand name
+    setTimeout(() => {
+      taglineOpacity.value = withTiming(1, { duration: 400 });
+    }, 600);
+  }, []);
+  
+  const logoAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: logoOpacity.value,
+      transform: [{ scale: logoScale.value }],
+    };
+  });
+  
+  const brandNameAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: brandNameOpacity.value,
+    };
+  });
+  
+  const taglineAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: taglineOpacity.value,
+    };
+  });
+  
+  const { width } = Dimensions.get('window');
+  
+  return (
+    <LinearGradient
+      colors={[COLORS.background, '#0A0F1C', COLORS.background]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.loading}
+    >
+      <View style={styles.loadingContent}>
+        <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
+          <Image
+            source={require('../../assets/codeverse-logo.png')}
+            style={[styles.logoImage, { width: width * 0.5, height: width * 0.5, maxWidth: 240, maxHeight: 240 }]}
+            resizeMode="contain"
+          />
+        </Animated.View>
+        
+        <Animated.View style={brandNameAnimatedStyle}>
+          <Text style={styles.brandName}>CodeVerse</Text>
+        </Animated.View>
+        
+        <Animated.View style={taglineAnimatedStyle}>
+          <Text style={styles.tagline}>Learn programming with AI</Text>
+        </Animated.View>
+        
+        <View style={styles.loaderWrapper}>
+          <AnimatedLoader />
+        </View>
+      </View>
+    </LinearGradient>
+  );
+}
+
 const styles = StyleSheet.create({
   loading: {
     flex: 1,
-    backgroundColor: COLORS.background,
+  },
+  loadingContent: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: SPACING.xl,
   },
   logoImage: {
-    width: 200,
-    height: 200,
+    // Dimensions set inline for responsive sizing
   },
-  loader: {
-    marginTop: 32,
+  brandName: {
+    fontSize: FONT_SIZES.hero + 4,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    letterSpacing: -0.5,
+  },
+  tagline: {
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginTop: SPACING.sm,
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  loaderWrapper: {
+    marginTop: SPACING.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loaderContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    overflow: 'hidden',
+    borderWidth: 4,
+    borderColor: COLORS.background,
+  },
+  loaderGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
   },
   tabIconWrap: {
     alignItems: 'center',

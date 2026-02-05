@@ -15,7 +15,12 @@
     "ios": {
       "supportsTablet": true,
       "icon": "./assets/icon.png",
-      "bundleIdentifier": "com.learnmadetamil.codeverseai"
+      "bundleIdentifier": "com.learnmadetamil.codeverseai",
+      "splash": {
+        "image": "./assets/splash-icon.png",
+        "resizeMode": "contain",
+        "backgroundColor": "#0C1222"
+      }
     },
     "android": {
       "package": "com.learnmadetamil.codeverseai",

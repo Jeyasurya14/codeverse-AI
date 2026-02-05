@@ -1,8 +1,18 @@
 import React, { useEffect, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text, Image } from 'react-native';
+import { View, StyleSheet, Text, Image, Dimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  withRepeat, 
+  withSequence,
+  Easing,
+  interpolate
+} from 'react-native-reanimated';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/context/AuthContext';
 import { TokenProvider } from './src/context/TokenContext';
@@ -11,7 +21,7 @@ import { BookmarksProvider } from './src/context/BookmarksContext';
 import { useLoadFonts } from './src/context/FontContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AuthDeepLinkHandler } from './src/components/AuthDeepLinkHandler';
-import { COLORS } from './src/constants/theme';
+import { COLORS, SPACING, FONTS, FONT_SIZES } from './src/constants/theme';
 
 // Global error handler for unhandled promise rejections
 if (typeof global !== 'undefined') {
@@ -37,21 +47,22 @@ export default function App() {
   const fontsLoaded = useLoadFonts();
   const [appIsReady, setAppIsReady] = useState(false);
   
+  // Keep native splash visible until custom screen is fully ready
   useEffect(() => {
     async function prepare() {
       try {
-        // Hide splash screen immediately to show our branded loading screen
-        await SplashScreen.hideAsync();
-        
         // Wait for fonts to load
         if (fontsLoaded) {
-          // Small delay to show branded loading screen (optional - remove if you want instant)
-          await new Promise(resolve => setTimeout(resolve, 800));
+          // Small delay to ensure smooth transition (reduced from 800ms)
+          await new Promise(resolve => setTimeout(resolve, 300));
           setAppIsReady(true);
+          // Only hide native splash when custom screen is ready
+          await SplashScreen.hideAsync();
         }
       } catch (e) {
         console.warn(e);
-        // Still hide splash even on error
+        // Still hide splash even on error, but show custom screen
+        setAppIsReady(true);
         await SplashScreen.hideAsync();
       }
     }
@@ -80,66 +91,198 @@ export default function App() {
     }
   }, []);
 
+  // Show splash immediately, even before fonts load - prevents white screen
   if (!fontsLoaded || !appIsReady) {
-    return (
-      <View style={styles.loading}>
-        <View style={styles.logoContainer}>
+    return <SplashScreenComponent />;
+  }
+
+  return (
+    <View style={styles.appWrapper}>
+      <ErrorBoundary>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <AuthDeepLinkHandler />
+            <TokenProvider>
+              <ProgressProvider>
+                <BookmarksProvider>
+                  <StatusBar style="light" />
+                  <RootNavigator />
+                </BookmarksProvider>
+              </ProgressProvider>
+            </TokenProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
+      </ErrorBoundary>
+    </View>
+  );
+}
+
+// Custom animated loading spinner component
+function AnimatedLoader() {
+  const rotation = useSharedValue(0);
+  
+  useEffect(() => {
+    rotation.value = withRepeat(
+      withTiming(360, {
+        duration: 1500,
+        easing: Easing.linear,
+      }),
+      -1,
+      false
+    );
+  }, []);
+  
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ rotate: `${rotation.value}deg` }],
+    };
+  });
+  
+  return (
+    <Animated.View style={[styles.loaderContainer, animatedStyle]}>
+      <LinearGradient
+        colors={[COLORS.primary, COLORS.secondary, COLORS.primary]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.loaderGradient}
+      />
+    </Animated.View>
+  );
+}
+
+// Splash screen component with animations
+function SplashScreenComponent() {
+  const logoOpacity = useSharedValue(0);
+  const logoScale = useSharedValue(0.8);
+  const taglineOpacity = useSharedValue(0);
+  const brandNameOpacity = useSharedValue(0);
+  
+  useEffect(() => {
+    // Logo animation: fade in + scale
+    logoOpacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.ease) });
+    logoScale.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.ease) });
+    
+    // Brand name animation: fade in after logo
+    setTimeout(() => {
+      brandNameOpacity.value = withTiming(1, { duration: 400 });
+    }, 300);
+    
+    // Tagline animation: fade in after brand name
+    setTimeout(() => {
+      taglineOpacity.value = withTiming(1, { duration: 400 });
+    }, 600);
+  }, []);
+  
+  const logoAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: logoOpacity.value,
+      transform: [{ scale: logoScale.value }],
+    };
+  });
+  
+  const brandNameAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: brandNameOpacity.value,
+    };
+  });
+  
+  const taglineAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: taglineOpacity.value,
+    };
+  });
+  
+  return (
+    <LinearGradient
+      colors={[COLORS.background, '#0A0F1C', COLORS.background]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.container}
+    >
+      <StatusBar style="light" />
+      <View style={styles.content}>
+        <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
           <Image
             source={require('./assets/codeverse-logo.png')}
             style={styles.logoImage}
             resizeMode="contain"
           />
+        </Animated.View>
+        
+        <Animated.View style={brandNameAnimatedStyle}>
+          <Text style={styles.brandName}>CodeVerse</Text>
+        </Animated.View>
+        
+        <Animated.View style={taglineAnimatedStyle}>
           <Text style={styles.tagline}>Learn programming with AI</Text>
+        </Animated.View>
+        
+        <View style={styles.loaderWrapper}>
+          <AnimatedLoader />
         </View>
-        <ActivityIndicator size="large" color={COLORS.primary} style={styles.loader} />
       </View>
-    );
-  }
-
-  return (
-    <ErrorBoundary>
-      <SafeAreaProvider>
-<AuthProvider>
-        <AuthDeepLinkHandler />
-        <TokenProvider>
-          <ProgressProvider>
-          <BookmarksProvider>
-            <StatusBar style="light" />
-            <RootNavigator />
-          </BookmarksProvider>
-        </ProgressProvider>
-        </TokenProvider>
-        </AuthProvider>
-      </SafeAreaProvider>
-    </ErrorBoundary>
+    </LinearGradient>
   );
 }
 
+const { width } = Dimensions.get('window');
+
 const styles = StyleSheet.create({
-  loading: {
+  appWrapper: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
   },
   logoContainer: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: SPACING.xl,
   },
   logoImage: {
-    width: 200,
-    height: 200,
-    marginBottom: 16,
+    width: width * 0.5,
+    height: width * 0.5,
+    maxWidth: 240,
+    maxHeight: 240,
   },
-  loader: {
-    marginTop: 32,
+  brandName: {
+    fontSize: FONT_SIZES.hero + 4,
+    fontFamily: FONTS.bold,
+    color: COLORS.textPrimary,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    letterSpacing: -0.5,
   },
   tagline: {
-    fontSize: 15,
-    fontFamily: 'System',
-    fontWeight: '400',
+    fontSize: FONT_SIZES.md,
+    fontFamily: FONTS.regular,
     color: COLORS.textMuted,
-    marginTop: 8,
+    marginTop: SPACING.sm,
     letterSpacing: 0.3,
+    textAlign: 'center',
+  },
+  loaderWrapper: {
+    marginTop: SPACING.xxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loaderContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    overflow: 'hidden',
+    borderWidth: 4,
+    borderColor: COLORS.background,
+  },
+  loaderGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 25,
   },
 });
