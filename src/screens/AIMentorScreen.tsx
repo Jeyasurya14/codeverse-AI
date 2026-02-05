@@ -32,6 +32,14 @@ import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, SHADOWS }
 
 const TOKENS_PER_MESSAGE = AI_TOKENS.TOKENS_PER_MESSAGE; // 10 tokens per message
 
+// MNC-grade suggested prompts for first-time and empty state
+const SUGGESTED_PROMPTS = [
+  'Explain time complexity of this approach and suggest optimizations',
+  'How would you design a rate limiter for a high-traffic API?',
+  'Review this code and suggest cleaner, more maintainable patterns',
+  'Walk me through a solid answer for: "Design a URL shortener"',
+];
+
 // Security and validation constants
 const MAX_INPUT_LENGTH = 500;
 const MAX_SANITIZED_LENGTH = 5000;
@@ -536,7 +544,8 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
               </View>
             </View>
             <View style={styles.headerTextBlock}>
-              <Text style={styles.title} numberOfLines={1}>Codey AI</Text>
+              <Text style={styles.title} numberOfLines={1}>AI Mentor</Text>
+              <Text style={styles.headerSubtitle} numberOfLines={1}>Senior-level guidance · Algorithms · System design</Text>
               <View style={styles.statusContainer}>
                 <View style={styles.statusDot} />
                 <Text style={styles.statusText}>ONLINE</Text>
@@ -587,35 +596,50 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
           >
             {messages.length === 0 && (
               <Card style={styles.welcome} elevated>
-              <View style={styles.welcomeContent}>
-                <View style={[styles.welcomeIcon, styles.welcomeIconCircle]}>
-                  <Ionicons name="sparkles" size={36} color={COLORS.primary} />
-                </View>
-                <Text style={styles.welcomeTitle}>Ask anything</Text>
-                <Text style={styles.welcomeDesc}>
-                  Get explanations, code help, or practice interview questions. {TOKENS_PER_MESSAGE} tokens per message. Max {MAX_INPUT_LENGTH} characters per message.
-                </Text>
-                <View style={styles.welcomeStats}>
-                  <View style={styles.statItem}>
-                    <View style={[styles.statIcon, { backgroundColor: COLORS.secondary + '18' }]}>
-                      <Ionicons name="gift" size={14} color={COLORS.secondary} />
+                <View style={styles.welcomeContent}>
+                  <View style={[styles.welcomeIcon, styles.welcomeIconCircle]}>
+                    <Ionicons name="school" size={36} color={COLORS.primary} />
+                  </View>
+                  <Text style={styles.welcomeTitle}>Senior-level AI Mentor</Text>
+                  <Text style={styles.welcomeDesc}>
+                    Get production-grade guidance: algorithms, system design, code review, and interview prep. Professional, concise, actionable.
+                  </Text>
+                  <Text style={styles.welcomeHint}>Try a suggested question or type your own ({TOKENS_PER_MESSAGE} tokens/message, max {MAX_INPUT_LENGTH} chars)</Text>
+                  <View style={styles.suggestedPrompts}>
+                    {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.suggestedChip}
+                        onPress={() => setInput(prompt)}
+                        activeOpacity={0.7}
+                        disabled={totalAvailable < TOKENS_PER_MESSAGE || loading}
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={14} color={COLORS.primary} />
+                        <Text style={styles.suggestedChipText} numberOfLines={2}>{prompt}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.welcomeStats}>
+                    <View style={styles.statItem}>
+                      <View style={[styles.statIcon, { backgroundColor: COLORS.secondary + '18' }]}>
+                        <Ionicons name="gift" size={14} color={COLORS.secondary} />
+                      </View>
+                      <View style={styles.statItemText}>
+                        <Text style={styles.statLabel}>Free</Text>
+                        <Text style={styles.statNumber}>{freeRemaining} / {AI_TOKENS.FREE_LIMIT}</Text>
+                      </View>
                     </View>
-                    <View style={styles.statItemText}>
-                      <Text style={styles.statLabel}>Free</Text>
-                      <Text style={styles.statNumber}>{freeRemaining} / {AI_TOKENS.FREE_LIMIT}</Text>
+                    <View style={styles.statItem}>
+                      <View style={[styles.statIcon, { backgroundColor: COLORS.warning + '18' }]}>
+                        <Ionicons name="flash" size={14} color={COLORS.warning} />
+                      </View>
+                      <View style={styles.statItemText}>
+                        <Text style={styles.statLabel}>Available</Text>
+                        <Text style={styles.statNumber}>{totalAvailable}</Text>
+                      </View>
                     </View>
                   </View>
-                  <View style={styles.statItem}>
-                    <View style={[styles.statIcon, { backgroundColor: COLORS.warning + '18' }]}>
-                      <Ionicons name="flash" size={14} color={COLORS.warning} />
-                    </View>
-                    <View style={styles.statItemText}>
-                      <Text style={styles.statLabel}>Available</Text>
-                      <Text style={styles.statNumber}>{totalAvailable}</Text>
-                    </View>
-                  </View>
                 </View>
-              </View>
               </Card>
             )}
             {messages.map((msg, i) => {
@@ -633,7 +657,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
                     {msg.role === 'assistant' ? (
                       <>
                         <View style={styles.avatarBot}>
-                          <Ionicons name="cloud" size={20} color={COLORS.primary} />
+                          <Ionicons name="school" size={20} color={COLORS.primary} />
                         </View>
                         <View style={styles.bubbleBot}>
                           <MessageContent text={sanitizeMessageText(msg.text)} isUser={false} />
@@ -666,7 +690,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
               </View>
               <View style={[styles.bubbleBot, styles.loadingBubble]}>
                 <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Thinking...</Text>
+                <Text style={styles.loadingText}>Preparing response...</Text>
               </View>
               </View>
             )}
@@ -682,7 +706,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
                       styles.input,
                       !canSend && styles.inputDisabled,
                     ]}
-                    placeholder="Ask a technical question..."
+                    placeholder="Algorithms, system design, code review..."
                     placeholderTextColor={COLORS.textMuted}
                     value={input}
                     onChangeText={setInput}
@@ -836,6 +860,12 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     letterSpacing: -0.2,
   },
+  headerSubtitle: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
   statusContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -965,9 +995,41 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
     color: COLORS.textSecondary,
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.sm,
     lineHeight: 20,
     textAlign: 'center',
+  },
+  welcomeHint: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: COLORS.textMuted,
+    marginBottom: SPACING.md,
+    textAlign: 'center',
+  },
+  suggestedPrompts: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+  },
+  suggestedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: COLORS.backgroundElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    maxWidth: '100%',
+  },
+  suggestedChipText: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.medium,
+    color: COLORS.textPrimary,
+    flex: 1,
   },
   welcomeStats: {
     flexDirection: 'row',

@@ -2,7 +2,8 @@
  * CodeVerse API – production-grade.
  * POST /ai/chat, POST /auth/exchange, health checks, security, rate limiting.
  */
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const express = require('express');
 const cors = require('cors');
@@ -17,7 +18,6 @@ const crypto = require('crypto');
 const { authenticator } = require('otplib');
 const QRCode = require('qrcode');
 const fs = require('fs');
-const path = require('path');
 
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
@@ -368,6 +368,25 @@ async function updateLastLogin(userId) {
 // Token cost constants
 const TOKENS_PER_AI_MESSAGE = 10; // Fixed cost per AI message
 const AI_TOKENS_FREE_LIMIT = 300; // Free tokens limit per user
+
+// MNC-grade AI Mentor: professional, senior-level guidance (OpenAI API key in backend .env)
+const AI_MENTOR_SYSTEM_PROMPT = `You are the CodeVerse AI Mentor: a senior software engineer and tech lead with experience at top-tier technology companies (FAANG and global MNCs). Your role is to give professional, production-grade guidance.
+
+**Expertise:** Algorithms & data structures, system design, clean code, design patterns, code review, technical interviews, best practices (SOLID, DRY, testing), and career growth.
+
+**Response style:**
+- Be concise and actionable. Prefer bullets or numbered steps when explaining.
+- Use markdown: **bold** for emphasis, \`code\` for identifiers, and fenced \`\`\`code blocks\`\`\` for snippets. Always use proper syntax (e.g. \`\`\`javascript, \`\`\`python).
+- For algorithms: give time/space complexity (Big O) when relevant.
+- For design: consider scale, trade-offs, and real-world constraints.
+- For code: suggest clean, readable, maintainable solutions; mention edge cases and tests when appropriate.
+- Stay professional and encouraging. No filler or marketing language.
+
+**Rules:**
+- Answer in the same language the user writes in (e.g. English if they write in English).
+- If the question is vague, ask one short clarifying question.
+- Do not make up APIs or library versions; if unsure, say so.
+- Keep responses focused. For long topics, offer a structured breakdown (e.g. 1. Overview 2. Approach 3. Code 4. Complexity).`;
 
 // Conversation limits based on subscription plan
 const CONVERSATION_LIMITS = {
@@ -2974,10 +2993,10 @@ app.post('/ai/chat', aiLimiter, async (req, res) => {
         });
       }
 
-      const systemContent =
-        context && String(context).trim()
-          ? `You are a friendly programming mentor. The user is learning in this context: ${String(context).trim()}. Explain clearly and concisely.`
-          : 'You are a friendly programming mentor. Explain clearly and concisely. Help with code and interview prep.';
+      const contextHint = context && String(context).trim()
+        ? `\n\n**User context:** ${String(context).trim()}`
+        : '';
+      const systemContent = AI_MENTOR_SYSTEM_PROMPT + contextHint;
 
       // Build messages array with conversation history
       const messagesForAI = [
@@ -3008,8 +3027,8 @@ app.post('/ai/chat', aiLimiter, async (req, res) => {
             openai.chat.completions.create({
               model: model,
               messages: messagesForAI,
-              max_tokens: 1024,
-              temperature: 0.7,
+              max_tokens: 1536,
+              temperature: 0.6,
             }),
             new Promise((_, reject) => 
               setTimeout(() => reject(new Error('OpenAI API request timeout')), 35000)
@@ -3206,7 +3225,11 @@ app.use((err, req, res, next) => {
 // --- Server & graceful shutdown ---
 const server = app.listen(PORT, () => {
   console.log(`CodeVerse API listening on port ${PORT} (${isProduction ? 'production' : 'development'})`);
-  if (!openai) console.warn('⚠️  OpenAI not configured - AI chat will be mocked');
+  if (openai) {
+    console.log('✅ AI Mentor: ready (OpenAI API key loaded from OPENAI_API_KEY)');
+  } else {
+    console.warn('⚠️  AI Mentor: disabled - set OPENAI_API_KEY in backend/.env to enable');
+  }
   if (!pool) console.warn('⚠️  Database not configured - user data will not be persisted');
   if (pool) console.log('✅ Database connection pool initialized');
 });
