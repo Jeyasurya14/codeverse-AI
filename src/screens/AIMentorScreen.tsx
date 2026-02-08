@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,15 @@ import {
   Modal,
   Alert,
   Keyboard,
+  Pressable,
+  Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTokens } from '../context/TokenContext';
 import { useAuth } from '../context/AuthContext';
-import { NeonButton } from '../components/NeonButton';
-import { Card } from '../components/Card';
 import { EmptyState } from '../components/EmptyState';
 import { MessageContent } from '../components/MessageContent';
 import {
@@ -28,9 +30,15 @@ import {
   getConversationMessages,
 } from '../services/api';
 import type { Conversation } from '../services/api';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, SHADOWS } from '../constants/theme';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, AI_TOKENS, FONTS, SHADOWS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 
 const TOKENS_PER_MESSAGE = AI_TOKENS.TOKENS_PER_MESSAGE; // 10 tokens per message
+
+const MIN_INPUT_HEIGHT = 40;
+const MAX_INPUT_HEIGHT = 200;
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // MNC-grade suggested prompts for first-time and empty state
 const SUGGESTED_PROMPTS = [
@@ -85,7 +93,12 @@ interface AIMentorScreenProps {
   navigation: any;
 }
 
+const TAB_BAR_HEIGHT = 64;
+
 export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
+  const { colors } = useTheme();
+  const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
   const { totalAvailable, freeRemaining, refresh } = useTokens();
   const [input, setInput] = useState('');
@@ -98,6 +111,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [initialLoadDone, setInitialLoadDone] = useState(false);
+  const [inputHeight, setInputHeight] = useState(MIN_INPUT_HEIGHT);
   const sendTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -325,6 +339,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
     }
     
     setInput('');
+    setInputHeight(MIN_INPUT_HEIGHT);
     setMessages((m) => [...m, { role: 'user', text: sanitizedText, createdAt: new Date().toISOString() }]);
     setLoading(true);
     setMessageCount((prev) => prev + 1);
@@ -531,55 +546,49 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
     }
   };
 
+  const styles = useMemo(() => createStyles(colors, insets.bottom), [colors, insets.bottom]);
 
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        {/* Minimal header */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.robotHead}>
-                <View style={styles.robotEye} />
-                <View style={styles.robotEye} />
-              </View>
+          <View style={styles.headerCenter}>
+            <View style={styles.headerLogo}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.primary} />
             </View>
-            <View style={styles.headerTextBlock}>
-              <Text style={styles.title} numberOfLines={1}>AI Mentor</Text>
-              <Text style={styles.headerSubtitle} numberOfLines={1}>Senior-level guidance · Algorithms · System design</Text>
-              <View style={styles.statusContainer}>
-                <View style={styles.statusDot} />
-                <Text style={styles.statusText}>ONLINE</Text>
-              </View>
+            <Text style={styles.headerTitle}>{t('aiMentor.title')}</Text>
+            <View style={styles.headerStatus}>
+              <View style={[styles.headerStatusDot, { backgroundColor: colors.success }]} />
+              <Text style={styles.headerStatusText}>Online</Text>
             </View>
           </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity 
-              style={styles.headerIconButton}
-              onPress={openHistoryModal}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons name="time-outline" size={20} color={COLORS.textPrimary} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.headerHistoryBtn}
+            onPress={openHistoryModal}
+            hitSlop={12}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="list" size={22} color={colors.textPrimary} />
+          </TouchableOpacity>
         </View>
 
         {totalAvailable < TOKENS_PER_MESSAGE && (
-          <Card accentColor={COLORS.warning} style={styles.banner}>
-            <View style={styles.bannerContent}>
-              <Ionicons name="warning" size={20} color={COLORS.warning} />
-              <View style={styles.bannerTextContainer}>
-                <Text style={styles.bannerTitle}>Insufficient Tokens</Text>
-                <Text style={styles.bannerText}>
-                  You need at least {TOKENS_PER_MESSAGE} tokens to send a message. You have {totalAvailable} tokens remaining.
-                </Text>
-              </View>
+          <View style={styles.banner}>
+            <View style={styles.bannerInner}>
+              <Ionicons name="flash-outline" size={18} color={colors.warning} />
+              <Text style={styles.bannerText}>
+                {totalAvailable} tokens · Need {TOKENS_PER_MESSAGE} to chat
+              </Text>
+              <TouchableOpacity
+                style={styles.bannerBtn}
+                onPress={() => navigation.navigate('RechargeTokens')}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.bannerBtnText}>{t('home.recharge')}</Text>
+              </TouchableOpacity>
             </View>
-            <NeonButton
-              title="Recharge Now"
-              onPress={() => navigation.navigate('RechargeTokens')}
-              style={styles.bannerBtn}
-            />
-          </Card>
+          </View>
         )}
 
         <KeyboardAvoidingView
@@ -595,148 +604,114 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
             keyboardDismissMode="interactive"
           >
             {messages.length === 0 && (
-              <Card style={styles.welcome} elevated>
-                <View style={styles.welcomeContent}>
-                  <View style={[styles.welcomeIcon, styles.welcomeIconCircle]}>
-                    <Ionicons name="school" size={36} color={COLORS.primary} />
+              <View style={styles.welcome}>
+                <Animated.View entering={FadeInDown.delay(0).springify().damping(18)} style={styles.welcomeHeader}>
+                  <View style={styles.welcomeIconBox}>
+                    <Ionicons name="school-outline" size={36} color={colors.primary} />
                   </View>
-                  <Text style={styles.welcomeTitle}>Senior-level AI Mentor</Text>
-                  <Text style={styles.welcomeDesc}>
-                    Get production-grade guidance: algorithms, system design, code review, and interview prep. Professional, concise, actionable.
+                  <Text style={styles.welcomeTitle}>{t('aiMentor.askAnything')}</Text>
+                  <Text style={styles.welcomeSubtitle}>
+                    Algorithms · System design · Code review · Interview prep
                   </Text>
-                  <Text style={styles.welcomeHint}>Try a suggested question or type your own ({TOKENS_PER_MESSAGE} tokens/message, max {MAX_INPUT_LENGTH} chars)</Text>
-                  <View style={styles.suggestedPrompts}>
-                    {SUGGESTED_PROMPTS.map((prompt, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={styles.suggestedChip}
-                        onPress={() => setInput(prompt)}
-                        activeOpacity={0.7}
-                        disabled={totalAvailable < TOKENS_PER_MESSAGE || loading}
-                      >
-                        <Ionicons name="chatbubble-ellipses-outline" size={14} color={COLORS.primary} />
-                        <Text style={styles.suggestedChipText} numberOfLines={2}>{prompt}</Text>
-                      </TouchableOpacity>
-                    ))}
+                  <View style={styles.welcomeTokens}>
+                    <Text style={styles.welcomeTokensText}>{totalAvailable} {t('aiMentor.tokensAvailable')}</Text>
                   </View>
-                  <View style={styles.welcomeStats}>
-                    <View style={styles.statItem}>
-                      <View style={[styles.statIcon, { backgroundColor: COLORS.secondary + '18' }]}>
-                        <Ionicons name="gift" size={14} color={COLORS.secondary} />
-                      </View>
-                      <View style={styles.statItemText}>
-                        <Text style={styles.statLabel}>Free</Text>
-                        <Text style={styles.statNumber}>{freeRemaining} / {AI_TOKENS.FREE_LIMIT}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.statItem}>
-                      <View style={[styles.statIcon, { backgroundColor: COLORS.warning + '18' }]}>
-                        <Ionicons name="flash" size={14} color={COLORS.warning} />
-                      </View>
-                      <View style={styles.statItemText}>
-                        <Text style={styles.statLabel}>Available</Text>
-                        <Text style={styles.statNumber}>{totalAvailable}</Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-              </Card>
+                </Animated.View>
+                <Animated.View entering={FadeInDown.delay(80).springify().damping(18)} style={styles.promptsGrid}>
+                  {SUGGESTED_PROMPTS.map((prompt, idx) => (
+                    <Pressable
+                      key={idx}
+                      style={({ pressed }) => [
+                        styles.promptChip,
+                        pressed && styles.promptChipPressed,
+                      ]}
+                      onPress={() => setInput(prompt)}
+                      disabled={totalAvailable < TOKENS_PER_MESSAGE || loading}
+                    >
+                      <Text style={styles.promptChipText} numberOfLines={2}>{prompt}</Text>
+                      <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                    </Pressable>
+                  ))}
+                </Animated.View>
+              </View>
             )}
             {messages.map((msg, i) => {
-              const timestamp = msg.createdAt
-                ? new Date(msg.createdAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
-                : new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+              const isUser = msg.role === 'user';
               return (
-                <View key={i} style={styles.messageWrapper}>
-                  <View
-                    style={[
-                      styles.messageContainer, 
-                      msg.role === 'user' ? styles.messageUser : styles.messageBot
-                    ]}
-                  >
-                    {msg.role === 'assistant' ? (
-                      <>
-                        <View style={styles.avatarBot}>
-                          <Ionicons name="school" size={20} color={COLORS.primary} />
-                        </View>
-                        <View style={styles.bubbleBot}>
-                          <MessageContent text={sanitizeMessageText(msg.text)} isUser={false} />
-                        </View>
-                      </>
-                    ) : (
-                      <>
-                        <View style={styles.bubbleUser}>
-                          <MessageContent text={sanitizeMessageText(msg.text)} isUser={true} />
-                        </View>
-                        <View style={styles.avatarUser}>
-                          <Ionicons name="person" size={18} color={COLORS.background} />
-                        </View>
-                      </>
-                    )}
+                <View key={i} style={[styles.msgRow, isUser ? styles.msgRowUser : styles.msgRowBot]}>
+                  {!isUser && (
+                    <View style={styles.msgAvatar}>
+                      <Ionicons name="school-outline" size={16} color={colors.primary} />
+                    </View>
+                  )}
+                  <View style={[styles.msgBubble, isUser ? styles.msgBubbleUser : styles.msgBubbleBot]}>
+                    <MessageContent text={sanitizeMessageText(msg.text)} isUser={isUser} />
                   </View>
-                  <Text style={[
-                    styles.timestamp,
-                    msg.role === 'user' ? styles.timestampUser : styles.timestampBot
-                  ]}>
-                    {timestamp}
-                  </Text>
                 </View>
               );
             })}
             {loading && (
-              <View style={[styles.messageContainer, styles.messageBot]}>
-              <View style={styles.avatarBot}>
-                <Ionicons name="sparkles" size={18} color={COLORS.primary} />
-              </View>
-              <View style={[styles.bubbleBot, styles.loadingBubble]}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.loadingText}>Preparing response...</Text>
-              </View>
+              <View style={[styles.msgRow, styles.msgRowBot]}>
+                <View style={styles.msgAvatar}>
+                  <Ionicons name="school-outline" size={16} color={colors.primary} />
+                </View>
+                <View style={[styles.msgBubble, styles.msgBubbleBot, styles.loadingBubble]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.loadingText}>{t('aiMentor.thinking')}</Text>
+                </View>
               </View>
             )}
           </ScrollView>
 
           <View style={styles.inputRow}>
-            {/* Input Field */}
-            <View style={styles.inputWrapper}>
-              <View style={styles.inputRowInner}>
-                <View style={styles.inputContainer}>
+            <View style={styles.inputBox}>
+                <View style={[styles.inputContainer, { minHeight: inputHeight }]}>
                   <TextInput
                     style={[
                       styles.input,
                       !canSend && styles.inputDisabled,
+                      { height: Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, inputHeight)) },
                     ]}
-                    placeholder="Algorithms, system design, code review..."
-                    placeholderTextColor={COLORS.textMuted}
+                    placeholder={t('aiMentor.placeholder')}
+                    placeholderTextColor={colors.textMuted}
                     value={input}
                     onChangeText={setInput}
+                    onContentSizeChange={(e) => {
+                      const h = e.nativeEvent.contentSize.height + 24;
+                      setInputHeight(Math.max(MIN_INPUT_HEIGHT, Math.min(MAX_INPUT_HEIGHT, h)));
+                    }}
                     multiline
                     maxLength={MAX_INPUT_LENGTH}
                     editable={totalAvailable >= TOKENS_PER_MESSAGE && !loading}
                     autoCapitalize="sentences"
                     autoCorrect={true}
                     spellCheck={true}
+                    scrollEnabled={true}
                   />
+                  <Text style={styles.inputCharCount}>
+                    {input.length}/{MAX_INPUT_LENGTH}
+                  </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={sendMessage}
-                  disabled={!canSend || loading}
-                  style={[
-                    styles.sendButton,
-                    (!canSend || loading) && styles.sendButtonDisabled,
-                  ]}
-                >
-                  {loading ? (
-                    <ActivityIndicator size="small" color={COLORS.background} />
-                  ) : (
-                    <Ionicons 
-                      name="send" 
-                      size={20} 
-                      color={canSend ? COLORS.background : COLORS.textMuted} 
-                    />
-                  )}
-                </TouchableOpacity>
-              </View>
+                {canSend && !loading ? (
+                  <TouchableOpacity
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      sendMessage();
+                    }}
+                    style={styles.sendBtn}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="send" size={20} color={colors.background} />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={[styles.sendBtn, styles.sendBtnDisabled]}>
+                    {loading ? (
+                      <ActivityIndicator size="small" color={colors.textMuted} />
+                    ) : (
+                      <Ionicons name="send" size={22} color={colors.textMuted} />
+                    )}
+                  </View>
+                )}
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -754,22 +729,26 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
           activeOpacity={1}
           onPress={() => setHistoryModalVisible(false)}
         >
-          <View style={styles.historyModalContent} onStartShouldSetResponder={() => true}>
+          <View style={[styles.historyModalContent, SHADOWS.cardElevated]} onStartShouldSetResponder={() => true}>
             <View style={styles.historyModalHeader}>
-              <Text style={styles.historyModalTitle}>Conversation history</Text>
+              <Text style={styles.historyModalTitle}>{t('aiMentor.conversationHistory')}</Text>
               <TouchableOpacity onPress={() => setHistoryModalVisible(false)} hitSlop={12}>
-                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
             {loadingHistory ? (
               <View style={styles.historyLoading}>
-                <ActivityIndicator size="small" color={COLORS.primary} />
-                <Text style={styles.historyLoadingText}>Loading...</Text>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.historyLoadingText}>{t('aiMentor.loadingConversations')}</Text>
+                <Text style={styles.historyLoadingSub}>One moment please</Text>
               </View>
             ) : conversations.length === 0 ? (
               <View style={styles.historyEmpty}>
-                <Ionicons name="chatbubbles-outline" size={48} color={COLORS.textMuted} />
-                <Text style={styles.historyEmptyText}>No previous conversations</Text>
+                <View style={styles.historyEmptyIconWrap}>
+                  <Ionicons name="chatbubbles-outline" size={56} color={colors.textMuted} />
+                </View>
+                <Text style={styles.historyEmptyTitle}>{t('aiMentor.noConversations')}</Text>
+                <Text style={styles.historyEmptyText}>{t('aiMentor.startNewChat')}</Text>
               </View>
             ) : (
               <ScrollView style={styles.historyList} keyboardShouldPersistTaps="handled">
@@ -778,6 +757,7 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
                     key={conv.id}
                     style={[
                       styles.historyItem,
+                      SHADOWS.card,
                       currentConversationId === conv.id && styles.historyItemActive,
                     ]}
                     onPress={() => selectConversation(conv)}
@@ -798,428 +778,279 @@ export function AIMentorScreen({ navigation }: AIMentorScreenProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+const createStyles = (colors: { background: string; backgroundCard: string; border: string; textPrimary: string; [key: string]: string }, safeBottom: number) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   safe: { flex: 1 },
   keyboardAvoidingView: {
     flex: 1,
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
+    backgroundColor: colors.backgroundCard,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: SPACING.sm,
+    borderBottomColor: colors.border,
   },
-  headerLeft: {
+  headerCenter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.md,
+    gap: SPACING.sm,
     flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
   },
-  avatarContainer: {
+  headerLogo: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.backgroundCard,
+    backgroundColor: colors.primary + '18',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    flexShrink: 0,
   },
-  robotHead: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: COLORS.backgroundElevated,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  robotEye: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.primary,
-  },
-  headerTextBlock: {
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
-  },
-  title: {
+  headerTitle: {
     fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    letterSpacing: -0.2,
+    color: colors.textPrimary,
   },
-  headerSubtitle: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginTop: 2,
-  },
-  statusContainer: {
+  headerStatus: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    marginTop: 2,
+    gap: 4,
+    marginLeft: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: colors.success + '20',
   },
-  statusDot: {
+  headerStatusDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.success,
   },
-  statusText: {
-    fontSize: FONT_SIZES.xs,
+  headerStatusText: {
+    fontSize: 11,
     fontFamily: FONTS.medium,
-    color: COLORS.success,
+    color: colors.success,
   },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
+  headerHistoryBtn: {
+    padding: SPACING.sm,
   },
-  headerIconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.backgroundCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  tokenChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.sm + 2,
-    paddingVertical: SPACING.sm,
+  banner: {
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.sm,
+    backgroundColor: colors.warning + '15',
     borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.backgroundCard,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    gap: SPACING.xs + 2,
-    flexShrink: 0,
-    marginLeft: SPACING.xs,
+    borderColor: colors.warning + '40',
   },
-  tokenChipLow: {
-    borderColor: COLORS.warning,
-    backgroundColor: COLORS.warning + '15',
-  },
-  tokenInfo: {
-    justifyContent: 'center',
-  },
-  tokenValue: { 
-    fontSize: FONT_SIZES.lg, 
-    fontFamily: FONTS.bold, 
-    color: COLORS.textPrimary,
-    lineHeight: 20,
-  },
-  tokenLabel: { 
-    fontSize: FONT_SIZES.xs, 
-    fontFamily: FONTS.regular, 
-    color: COLORS.textMuted,
-  },
-  banner: { 
-    marginHorizontal: SPACING.lg, 
-    marginBottom: SPACING.md,
-  },
-  bannerContent: {
+  bannerInner: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.sm,
-    marginBottom: SPACING.md,
-    alignItems: 'flex-start',
-  },
-  bannerTextContainer: {
-    flex: 1,
-  },
-  bannerTitle: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
+    padding: SPACING.md,
   },
   bannerText: {
+    flex: 1,
     fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
+    fontFamily: FONTS.medium,
+    color: colors.textPrimary,
   },
-  bannerBtn: { alignSelf: 'flex-start' },
+  bannerBtn: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+    backgroundColor: colors.warning,
+  },
+  bannerBtnText: {
+    fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.bold,
+    color: colors.background,
+  },
   chat: { flex: 1 },
   chatContent: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
+    paddingTop: SPACING.lg,
     paddingBottom: SPACING.xxl + 24,
     flexGrow: 1,
+    minHeight: SCREEN_HEIGHT - 180,
   },
-  welcome: { 
-    marginTop: SPACING.md,
-    marginBottom: SPACING.lg,
+  welcome: {
+    flex: 1,
+    paddingTop: SPACING.xxl,
+    paddingHorizontal: SPACING.lg,
+  },
+  welcomeHeader: {
     alignItems: 'center',
+    marginBottom: SPACING.xl,
   },
-  welcomeIcon: {
-    marginBottom: SPACING.md,
-  },
-  welcomeIconCircle: {
+  welcomeIconBox: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: COLORS.primaryMuted,
+    backgroundColor: colors.primary + '15',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  welcomeContent: {
-    width: '100%',
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xl,
-    alignItems: 'center',
+    marginBottom: SPACING.lg,
   },
   welcomeTitle: {
     fontSize: FONT_SIZES.xl,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.sm,
+    color: colors.textPrimary,
     textAlign: 'center',
+    marginBottom: SPACING.sm,
+    lineHeight: 28,
   },
-  welcomeDesc: {
+  welcomeSubtitle: {
     fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.sm,
-    lineHeight: 20,
+    color: colors.textMuted,
     textAlign: 'center',
+    marginBottom: SPACING.lg,
   },
-  welcomeHint: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginBottom: SPACING.md,
-    textAlign: 'center',
-  },
-  suggestedPrompts: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    justifyContent: 'center',
-    marginBottom: SPACING.md,
-  },
-  suggestedChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.sm,
+  welcomeTokens: {
     paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.backgroundElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    maxWidth: '100%',
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: colors.backgroundCard,
+    alignSelf: 'center',
   },
-  suggestedChipText: {
+  welcomeTokensText: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.medium,
-    color: COLORS.textPrimary,
-    flex: 1,
+    color: colors.textMuted,
   },
-  welcomeStats: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  promptsGrid: {
     gap: SPACING.sm,
-    justifyContent: 'center',
-    minWidth: 0,
   },
-  statIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: BORDER_RADIUS.sm,
+  promptChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+    justifyContent: 'space-between',
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: BORDER_RADIUS.lg,
+    backgroundColor: colors.backgroundCard,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  statItemText: {
-    minWidth: 0,
-    justifyContent: 'center',
-    flexDirection: 'column',
+  promptChipPressed: {
+    opacity: 0.85,
   },
-  statLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMuted,
-    lineHeight: 16,
-    marginBottom: 2,
-  },
-  statNumber: {
+  promptChipText: {
+    flex: 1,
     fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    lineHeight: 18,
+    fontFamily: FONTS.medium,
+    color: colors.textPrimary,
+    marginRight: SPACING.sm,
   },
-  welcomeHint: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-  },
-  messageWrapper: {
-    marginBottom: SPACING.md,
-  },
-  messageContainer: {
+  msgRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    marginBottom: SPACING.md,
     gap: SPACING.sm,
   },
-  timestamp: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginTop: SPACING.xs,
-  },
-  timestampBot: {
-    marginLeft: 44 + SPACING.sm,
-  },
-  timestampUser: {
-    marginRight: 44 + SPACING.sm,
-    textAlign: 'right',
-  },
-  messageUser: {
+  msgRowUser: {
     justifyContent: 'flex-end',
     flexDirection: 'row-reverse',
   },
-  messageBot: {
+  msgRowBot: {
     justifyContent: 'flex-start',
   },
-  avatarBot: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.backgroundCard,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  msgAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary + '20',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  avatarUser: {
-    width: 36,
-    height: 36,
+  msgBubble: {
+    maxWidth: '80%',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm + 2,
     borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
-  bubble: {
-    maxWidth: '85%',
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
+  msgBubbleUser: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 4,
   },
-  bubbleUser: {
-    maxWidth: '82%',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.primary,
-    alignSelf: 'flex-end',
-  },
-  bubbleBot: {
-    maxWidth: '82%',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.backgroundElevated,
+  msgBubbleBot: {
+    backgroundColor: colors.backgroundCard,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    alignSelf: 'flex-start',
+    borderColor: colors.border,
+    borderBottomLeftRadius: 4,
   },
   loadingBubble: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  bubbleText: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.regular,
-    color: COLORS.textPrimary,
-    lineHeight: 22,
-  },
-  bubbleTextUser: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.regular,
-    color: COLORS.background,
-    lineHeight: 22,
-  },
   loadingText: {
     fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
   },
   inputRow: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xl,
-    paddingBottom: Platform.OS === 'ios' ? SPACING.xxl : SPACING.xl,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.background,
-    width: '100%',
-    alignSelf: 'stretch',
-  },
-  inputWrapper: {
-    flex: 1,
-    width: '100%',
-  },
-  inputRowInner: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.lg,
-    width: '100%',
+    alignItems: 'flex-end',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: TAB_BAR_HEIGHT + Math.max(safeBottom, SPACING.sm) + SPACING.sm,
+    backgroundColor: colors.background,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  inputBox: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: SPACING.sm,
+    minWidth: 0,
   },
   plusButton: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.backgroundCard,
+    backgroundColor: colors.backgroundCard,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   inputContainer: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.backgroundCard,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    flexDirection: 'column',
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: colors.borderHover,
+    backgroundColor: colors.backgroundCard,
+    paddingHorizontal: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.xs,
     minHeight: 44,
+    minWidth: 100,
   },
   input: {
     flex: 1,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
+    width: '100%',
+    paddingHorizontal: 0,
+    paddingVertical: SPACING.sm,
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.regular,
-    color: COLORS.textPrimary,
-    maxHeight: 100,
-    minHeight: 44,
+    color: colors.textPrimary,
+    minHeight: 24,
     textAlignVertical: 'top',
+  },
+  inputCharCount: {
+    fontSize: FONT_SIZES.xs,
+    fontFamily: FONTS.regular,
+    color: colors.textMuted,
+    alignSelf: 'flex-end',
+    marginTop: 2,
   },
   micButton: {
     width: 36,
@@ -1232,19 +1063,19 @@ const styles = StyleSheet.create({
   inputDisabled: {
     opacity: 0.5,
   },
-  sendButton: {
+  sendBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    alignSelf: 'center',
   },
-  sendButtonDisabled: {
-    backgroundColor: COLORS.backgroundCard,
-    opacity: 0.5,
+  sendBtnDisabled: {
+    backgroundColor: colors.backgroundCard,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalOverlay: {
     flex: 1,
@@ -1252,7 +1083,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   historyModalContent: {
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderTopLeftRadius: BORDER_RADIUS.xl,
     borderTopRightRadius: BORDER_RADIUS.xl,
     maxHeight: '70%',
@@ -1265,12 +1096,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   historyModalTitle: {
     fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   historyLoading: {
     padding: SPACING.xl,
@@ -1279,18 +1110,41 @@ const styles = StyleSheet.create({
   },
   historyLoadingText: {
     fontSize: FONT_SIZES.sm,
+    fontFamily: FONTS.medium,
+    color: colors.textPrimary,
+  },
+  historyLoadingSub: {
+    fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
   },
   historyEmpty: {
-    padding: SPACING.xl,
+    padding: SPACING.xxl,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: SPACING.sm,
   },
+  historyEmptyIconWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.backgroundCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.md,
+  },
+  historyEmptyTitle: {
+    fontSize: FONT_SIZES.lg,
+    fontFamily: FONTS.bold,
+    color: colors.textPrimary,
+    marginBottom: SPACING.xs,
+    textAlign: 'center',
+  },
   historyEmptyText: {
-    fontSize: FONT_SIZES.md,
+    fontSize: FONT_SIZES.sm,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
+    textAlign: 'center',
   },
   historyList: {
     maxHeight: 400,
@@ -1302,23 +1156,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
     marginBottom: SPACING.xs,
-    backgroundColor: COLORS.backgroundCard,
+    backgroundColor: colors.backgroundCard,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   historyItemActive: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary + '12',
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '12',
   },
   historyItemTitle: {
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.medium,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   historyItemMeta: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
     marginTop: SPACING.xs,
   },
   // Sidebar styles
@@ -1330,9 +1184,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '85%',
     maxWidth: 360,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRightWidth: 1,
-    borderRightColor: COLORS.border,
+    borderRightColor: colors.border,
     ...SHADOWS.card,
   },
   sidebarSafe: {
@@ -1345,12 +1199,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   sidebarTitle: {
     fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
   },
   closeButton: {
     padding: SPACING.xs,
@@ -1362,12 +1216,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   newConversationText: {
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.bold,
-    color: COLORS.primary,
+    color: colors.primary,
   },
   conversationsList: {
     flex: 1,
@@ -1384,10 +1238,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   conversationItemActive: {
-    backgroundColor: COLORS.backgroundCard,
+    backgroundColor: colors.backgroundCard,
   },
   conversationContent: {
     flex: 1,
@@ -1396,20 +1250,20 @@ const styles = StyleSheet.create({
   conversationTitle: {
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.regular,
-    color: COLORS.textPrimary,
+    color: colors.textPrimary,
     marginBottom: SPACING.xs,
   },
   conversationTitleActive: {
     fontFamily: FONTS.bold,
-    color: COLORS.primary,
+    color: colors.primary,
   },
   conversationMeta: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
+    color: colors.textMuted,
   },
   newConversationTextDisabled: {
-    color: COLORS.textMuted,
+    color: colors.textMuted,
   },
   limitWarning: {
     flexDirection: 'row',
@@ -1417,14 +1271,14 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.warning + '15',
+    backgroundColor: colors.warning + '15',
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   limitWarningText: {
     fontSize: FONT_SIZES.xs,
     fontFamily: FONTS.regular,
-    color: COLORS.warning,
+    color: colors.warning,
     flex: 1,
   },
 });

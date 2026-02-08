@@ -26,6 +26,7 @@ const TensorflowLogo = require('../assets/logos/tensorflow.svg').default;
 const PytorchLogo = require('../assets/logos/pytorch.svg').default;
 const ScikitlearnLogo = require('../assets/logos/scikitlearn.svg').default;
 const OpenaiLogo = require('../assets/logos/openai.svg').default;
+const DevopsLogo = require('../assets/logos/devops.svg').default;
 
 type SvgComponent = ComponentType<{ width?: number; height?: number }>;
 const SVG: Record<string, SvgComponent> = {
@@ -39,6 +40,7 @@ const SVG: Record<string, SvgComponent> = {
   pytorch: PytorchLogo,
   'scikit-learn': ScikitlearnLogo,
   openai: OpenaiLogo,
+  devops: DevopsLogo,
 };
 
 export type LogoSource = ImageSourcePropType | SvgComponent;

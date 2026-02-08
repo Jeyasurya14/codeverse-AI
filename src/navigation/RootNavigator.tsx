@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -14,9 +14,12 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import type { User } from '../types';
-import { COLORS, FONTS, SPACING, FONT_SIZES, STORAGE_KEYS } from '../constants/theme';
+import { FONTS, SPACING, FONT_SIZES, STORAGE_KEYS } from '../constants/theme';
 
 // Support both exp:// (Expo Go) and codeverse-ai:// (standalone) deep links
 const isExpoGo = Constants.appOwnership === 'expo';
@@ -25,6 +28,7 @@ const linking = {
   config: {
     screens: {
       RechargeTokens: 'recharge',
+      ResetPassword: 'reset-password',
     },
   },
 };
@@ -32,25 +36,33 @@ import type { Article } from '../types';
 
 import { LoginScreen } from '../screens/LoginScreen';
 import { RegisterScreen } from '../screens/RegisterScreen';
+import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
+import { ResetPasswordScreen } from '../screens/ResetPasswordScreen';
 import { OnboardingScreen } from '../screens/OnboardingScreen';
 import { OnboardingSlidesScreen } from '../screens/OnboardingSlidesScreen';
 import { HomeScreen } from '../screens/HomeScreen';
-import { DashboardScreen } from '../screens/DashboardScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { ProfileScreen } from '../screens/ProfileScreen';
 import { ProgrammingScreen } from '../screens/ProgrammingScreen';
 import { ArticleListScreen } from '../screens/ArticleListScreen';
 import { ArticleDetailScreen } from '../screens/ArticleDetailScreen';
 import { AIMentorScreen } from '../screens/AIMentorScreen';
 import { RechargeTokensScreen } from '../screens/RechargeTokensScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
 
 export type RootStackParamList = {
   OnboardingSlides: undefined;
   Login: undefined;
   Register: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { token?: string };
   Onboarding: undefined;
   Main: undefined;
+  Profile: undefined;
   ArticleList: { languageId: string; languageName: string };
   ArticleDetail: { article: Article; languageName: string };
   RechargeTokens: undefined;
+  Notifications: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -60,48 +72,53 @@ const TAB_ICONS: Record<string, { active: keyof typeof Ionicons.glyphMap; inacti
   Home: { active: 'home', inactive: 'home-outline' },
   Programming: { active: 'book', inactive: 'book-outline' },
   AIMentor: { active: 'chatbubbles', inactive: 'chatbubbles-outline' },
-  Dashboard: { active: 'person', inactive: 'person-outline' },
+  Settings: { active: 'settings', inactive: 'settings-outline' },
 };
 
 function TabIcon({ name, focused, color }: { name: string; focused: boolean; color: string }) {
   const icons = TAB_ICONS[name];
   const iconName = icons ? (focused ? icons.active : icons.inactive) : 'ellipse';
   return (
-    <View style={styles.tabIconWrap}>
-      <Ionicons name={iconName} size={22} color={color} />
-      {focused && (
-        <View style={styles.tabIndicatorContainer}>
-          <View style={[styles.tabIndicatorDot, { backgroundColor: color }]} />
-          <View style={[styles.tabIndicatorLine, { backgroundColor: color }]} />
-        </View>
-      )}
+    <View style={[styles.tabIconWrap, focused && styles.tabIconWrapFocused]}>
+      <View style={[styles.tabIconInner, focused && { backgroundColor: color + '18' }]}>
+        <Ionicons name={iconName} size={22} color={color} />
+      </View>
     </View>
   );
 }
 
 function MainTabs() {
+  const { colors } = useTheme();
+  const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 64;
+  const bottomPadding = Math.max(insets.bottom, SPACING.sm);
   return (
     <Tab.Navigator
       initialRouteName="Home"
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: COLORS.backgroundCard,
-          borderTopColor: COLORS.border,
-          borderTopWidth: 1,
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: tabBarHeight + bottomPadding,
           paddingTop: SPACING.sm,
-          paddingBottom: Platform.OS === 'ios' ? SPACING.lg : SPACING.sm,
-          height: Platform.OS === 'ios' ? 84 : 64,
-          elevation: 4,
+          paddingBottom: bottomPadding,
+          backgroundColor: colors.backgroundCard,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          elevation: 8,
           shadowColor: '#000',
-          shadowOffset: { width: 0, height: -1 },
-          shadowOpacity: 0.08,
-          shadowRadius: 4,
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
         },
         tabBarShowLabel: true,
         tabBarHideOnKeyboard: false,
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textMuted,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: {
           fontFamily: FONTS.medium,
           fontSize: 11,
@@ -122,22 +139,22 @@ function MainTabs() {
       <Tab.Screen
         name="Home"
         component={HomeScreen}
-        options={{ tabBarLabel: 'Home', tabBarIcon: ({ focused, color }) => <TabIcon name="Home" focused={focused} color={color} /> }}
+        options={{ tabBarLabel: t('nav.home'), tabBarIcon: ({ focused, color }) => <TabIcon name="Home" focused={focused} color={color} /> }}
       />
       <Tab.Screen
         name="Programming"
         component={ProgrammingScreen}
-        options={{ tabBarLabel: 'Learn', tabBarIcon: ({ focused, color }) => <TabIcon name="Programming" focused={focused} color={color} /> }}
+        options={{ tabBarLabel: t('nav.learn'), tabBarIcon: ({ focused, color }) => <TabIcon name="Programming" focused={focused} color={color} /> }}
       />
       <Tab.Screen
         name="AIMentor"
         component={AIMentorScreen}
-        options={{ tabBarLabel: 'AI Mentor', tabBarIcon: ({ focused, color }) => <TabIcon name="AIMentor" focused={focused} color={color} /> }}
+        options={{ tabBarLabel: t('nav.aiMentor'), tabBarIcon: ({ focused, color }) => <TabIcon name="AIMentor" focused={focused} color={color} /> }}
       />
       <Tab.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        options={{ tabBarLabel: 'Profile', tabBarIcon: ({ focused, color }) => <TabIcon name="Dashboard" focused={focused} color={color} /> }}
+        name="Settings"
+        component={SettingsScreen}
+        options={{ tabBarLabel: t('nav.settings'), tabBarIcon: ({ focused, color }) => <TabIcon name="Settings" focused={focused} color={color} /> }}
       />
     </Tab.Navigator>
   );
@@ -204,12 +221,16 @@ export function RootNavigator() {
             <>
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
             </>
           ) : (
             <>
               <Stack.Screen name="OnboardingSlides" component={OnboardingSlidesScreen} />
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="Register" component={RegisterScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
             </>
           )
         ) : !isOnboardingDone ? (
@@ -217,9 +238,11 @@ export function RootNavigator() {
         ) : (
           <>
             <Stack.Screen name="Main" component={MainTabs} />
+            <Stack.Screen name="Profile" component={ProfileScreen} />
             <Stack.Screen name="ArticleList" component={ArticleListScreen} />
             <Stack.Screen name="ArticleDetail" component={ArticleDetailScreen} />
             <Stack.Screen name="RechargeTokens" component={RechargeTokensScreen} />
+            <Stack.Screen name="Notifications" component={NotificationsScreen} />
           </>
         )}
       </Stack.Navigator>
@@ -228,7 +251,7 @@ export function RootNavigator() {
 }
 
 // Custom animated loading spinner component
-function AnimatedLoader() {
+function AnimatedLoader({ colors }: { colors: typeof import('../constants/theme').COLORS }) {
   const rotation = useSharedValue(0);
   
   useEffect(() => {
@@ -249,9 +272,9 @@ function AnimatedLoader() {
   });
   
   return (
-    <Animated.View style={[styles.loaderContainer, animatedStyle]}>
+    <Animated.View style={[styles.loaderContainer, { borderColor: colors.background }, animatedStyle]}>
       <LinearGradient
-        colors={[COLORS.primary, COLORS.secondary, COLORS.primary]}
+        colors={[colors.primary, colors.secondary, colors.primary]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.loaderGradient}
@@ -262,6 +285,7 @@ function AnimatedLoader() {
 
 // Root loading screen component matching App.tsx design
 function RootLoadingScreen() {
+  const { colors } = useTheme();
   const logoOpacity = useSharedValue(0);
   const logoScale = useSharedValue(0.8);
   const taglineOpacity = useSharedValue(0);
@@ -303,10 +327,29 @@ function RootLoadingScreen() {
   });
   
   const { width } = Dimensions.get('window');
+
+  const themedStyles = useMemo(() => StyleSheet.create({
+    brandName: {
+      fontSize: FONT_SIZES.hero + 4,
+      fontFamily: FONTS.bold,
+      color: colors.textPrimary,
+      marginTop: SPACING.md,
+      marginBottom: SPACING.sm,
+      letterSpacing: -0.5,
+    },
+    tagline: {
+      fontSize: FONT_SIZES.md,
+      fontFamily: FONTS.regular,
+      color: colors.textMuted,
+      marginTop: SPACING.sm,
+      letterSpacing: 0.3,
+      textAlign: 'center' as const,
+    },
+  }), [colors]);
   
   return (
     <LinearGradient
-      colors={[COLORS.background, '#0A0F1C', COLORS.background]}
+      colors={[colors.background, colors.backgroundElevated, colors.background]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.loading}
@@ -321,15 +364,15 @@ function RootLoadingScreen() {
         </Animated.View>
         
         <Animated.View style={brandNameAnimatedStyle}>
-          <Text style={styles.brandName}>CodeVerse</Text>
+          <Text style={themedStyles.brandName}>CodeVerse</Text>
         </Animated.View>
         
         <Animated.View style={taglineAnimatedStyle}>
-          <Text style={styles.tagline}>Learn programming with AI</Text>
+          <Text style={themedStyles.tagline}>Learn programming with AI</Text>
         </Animated.View>
         
         <View style={styles.loaderWrapper}>
-          <AnimatedLoader />
+          <AnimatedLoader colors={colors} />
         </View>
       </View>
     </LinearGradient>
@@ -353,22 +396,6 @@ const styles = StyleSheet.create({
   logoImage: {
     // Dimensions set inline for responsive sizing
   },
-  brandName: {
-    fontSize: FONT_SIZES.hero + 4,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-    letterSpacing: -0.5,
-  },
-  tagline: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginTop: SPACING.sm,
-    letterSpacing: 0.3,
-    textAlign: 'center',
-  },
   loaderWrapper: {
     marginTop: SPACING.xxl,
     alignItems: 'center',
@@ -380,7 +407,6 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     overflow: 'hidden',
     borderWidth: 4,
-    borderColor: COLORS.background,
   },
   loaderGradient: {
     width: '100%',
@@ -391,27 +417,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    position: 'relative',
-    overflow: 'visible',
   },
-  tabIndicatorContainer: {
-    position: 'absolute',
-    bottom: -SPACING.sm - 2,
-    left: 0,
-    right: 0,
+  tabIconWrapFocused: {
+    // Active state handled by inner background
+  },
+  tabIconInner: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    width: '100%',
-  },
-  tabIndicatorDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginBottom: 2,
-  },
-  tabIndicatorLine: {
-    width: 30,
-    height: 2,
-    borderRadius: 1,
   },
 });

@@ -1710,19 +1710,25 @@ app.post('/auth/login', authLimiter, async (req, res) => {
       }
     }
 
-    // Successful login
-    await resetFailedLoginAttempts(user.id);
-    await updateLastLogin(user.id);
-    await logSecurityEvent(user.id, 'login_success', ipAddress, userAgent);
+    // Successful login - OPTIMIZED: Run all post-auth operations in parallel
+    // Generate tokens first (needed for response), then run other DB ops in parallel
+    const [tokens] = await Promise.all([
+      generateTokensWithRefresh(user, !!rememberMe),
+      // These operations don't block the response - run in parallel
+      resetFailedLoginAttempts(user.id).catch(() => {}),
+      updateLastLogin(user.id).catch(() => {}),
+      logSecurityEvent(user.id, 'login_success', ipAddress, userAgent).catch(() => {}),
+      initializeTokenUsage(user.id).catch(() => {}),
+    ]);
 
-    // Ensure token usage record exists
-    await initializeTokenUsage(user.id);
-    
-    // Get token usage for response
+    // Get token usage (fast query after init)
     const tokenUsage = await getTokenUsage(user.id);
-    const balance = await checkTokenBalance(user.id, 0);
+    
+    // Calculate balance directly from tokenUsage (no extra DB call needed)
+    const freeRemaining = Math.max(0, AI_TOKENS_FREE_LIMIT - tokenUsage.freeUsed);
+    const purchasedRemaining = Math.max(0, tokenUsage.purchasedTotal - tokenUsage.purchasedUsed);
+    const totalAvailable = freeRemaining + purchasedRemaining;
 
-    const { accessToken, refreshToken, expiresAt } = await generateTokensWithRefresh(user, !!rememberMe);
     return res.json({
       user: {
         id: user.id,
@@ -1733,17 +1739,17 @@ app.post('/auth/login', authLimiter, async (req, res) => {
         mfaEnabled: user.mfa_enabled,
         subscriptionPlan: user.subscription_plan || 'free',
       },
-      accessToken,
-      refreshToken,
-      expiresAt,
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: tokens.expiresAt,
       tokenUsage: {
         freeUsed: tokenUsage.freeUsed,
         purchasedTotal: tokenUsage.purchasedTotal,
         purchasedUsed: tokenUsage.purchasedUsed,
         freeLimit: AI_TOKENS_FREE_LIMIT,
-        freeRemaining: balance.freeRemaining,
-        purchasedRemaining: balance.purchasedRemaining,
-        totalAvailable: balance.available,
+        freeRemaining,
+        purchasedRemaining,
+        totalAvailable,
         tokensPerMessage: TOKENS_PER_AI_MESSAGE,
       },
     });
@@ -2188,6 +2194,7 @@ app.post('/auth/password/reset-request', authLimiter, async (req, res) => {
 
     if (emailTransporter) {
       const resetUrl = `${APP_URL}/auth/password/reset?token=${resetToken}`;
+      const appResetUrl = `codeverse-ai://reset-password?token=${resetToken}`;
       await emailTransporter.sendMail({
         from: EMAIL_FROM,
         to: user.email,
@@ -2195,7 +2202,8 @@ app.post('/auth/password/reset-request', authLimiter, async (req, res) => {
         html: `
           <h2>Password Reset Request</h2>
           <p>Click the link below to reset your password (expires in 1 hour):</p>
-          <p><a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#6c9eff;color:#fff;text-decoration:none;border-radius:8px;">Reset Password</a></p>
+          <p><a href="${resetUrl}" style="display:inline-block;padding:12px 24px;background:#6c9eff;color:#fff;text-decoration:none;border-radius:8px;">Reset Password (Web)</a></p>
+          <p><strong>On mobile?</strong> <a href="${appResetUrl}" style="color:#6c9eff;">Tap here to open in CodeVerse app</a></p>
           <p>Or copy this URL: ${resetUrl}</p>
           <p>If you didn't request this, you can safely ignore this email.</p>
         `,
@@ -2277,6 +2285,130 @@ app.post('/auth/password/reset', authLimiter, async (req, res) => {
     if (!isProduction) console.error('/auth/password/reset error:', err);
     res.status(500).json({
       message: isProduction ? 'Password reset failed.' : (err.message || 'Password reset failed.'),
+    });
+  }
+});
+
+/**
+ * POST /auth/password/change
+ * Change password for authenticated user
+ * Body: { currentPassword: string, newPassword: string }
+ */
+app.post('/auth/password/change', authLimiter, async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid or expired token.' });
+    }
+
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required.' });
+    }
+
+    if (typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(newPassword)) {
+      return res.status(400).json({ message: 'New password must contain uppercase, lowercase, and a number.' });
+    }
+
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.sub]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const currentUser = userResult.rows[0];
+    if (!currentUser.password_hash) {
+      return res.status(400).json({ message: 'Cannot change password for OAuth accounts.' });
+    }
+
+    const validPassword = await bcrypt.compare(currentPassword, currentUser.password_hash);
+    if (!validPassword) {
+      await logSecurityEvent(currentUser.id, 'password_change_failed', req.ip, req.get('user-agent'), { reason: 'invalid_current_password' });
+      return res.status(401).json({ message: 'Current password is incorrect.' });
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+      `UPDATE users SET password_hash = $1, password_changed_at = NOW() WHERE id = $2`,
+      [passwordHash, currentUser.id]
+    );
+
+    await logSecurityEvent(currentUser.id, 'password_changed', req.ip, req.get('user-agent'));
+
+    return res.json({ message: 'Password changed successfully.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/password/change error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to change password.' : (err.message || 'Failed to change password.'),
+    });
+  }
+});
+
+/**
+ * DELETE /auth/account
+ * Delete account for authenticated user
+ * Body: { password: string, confirm: string } - confirm must match "DELETE"
+ */
+app.delete('/auth/account', authLimiter, async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authentication required.' });
+    }
+
+    const token = authHeader.substring(7);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, secret);
+    } catch {
+      return res.status(401).json({ message: 'Invalid or expired token.' });
+    }
+
+    const { password, confirm } = req.body || {};
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required to delete account.' });
+    }
+    if (confirm !== 'DELETE') {
+      return res.status(400).json({ message: 'Please type DELETE to confirm account deletion.' });
+    }
+
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.sub]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    const currentUser = userResult.rows[0];
+    if (currentUser.password_hash) {
+      const validPassword = await bcrypt.compare(password, currentUser.password_hash);
+      if (!validPassword) {
+        await logSecurityEvent(currentUser.id, 'account_delete_failed', req.ip, req.get('user-agent'), { reason: 'invalid_password' });
+        return res.status(401).json({ message: 'Invalid password.' });
+      }
+    }
+
+    await logSecurityEvent(currentUser.id, 'account_deleted', req.ip, req.get('user-agent'));
+
+    // Delete user data (cascade will handle related tables if FK constraints exist)
+    await pool.query('DELETE FROM refresh_tokens WHERE user_id = $1', [currentUser.id]);
+    await pool.query('DELETE FROM token_usage WHERE user_id = $1', [currentUser.id]);
+    await pool.query('DELETE FROM security_audit_logs WHERE user_id = $1', [currentUser.id]);
+    await pool.query('DELETE FROM users WHERE id = $1', [currentUser.id]);
+
+    return res.json({ message: 'Account deleted successfully.' });
+  } catch (err) {
+    if (!isProduction) console.error('/auth/account delete error:', err);
+    res.status(500).json({
+      message: isProduction ? 'Failed to delete account.' : (err.message || 'Failed to delete account.'),
     });
   }
 });

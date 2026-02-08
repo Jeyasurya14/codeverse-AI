@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
 import { Clipboard, Alert } from 'react-native';
 
 interface MessageContentProps {
@@ -52,7 +53,56 @@ function parseMessage(text: string): Array<{ type: 'text' | 'code'; content: str
 }
 
 export function MessageContent({ text, isUser = false }: MessageContentProps) {
+  const { colors } = useTheme();
   const parts = parseMessage(text);
+
+  const themedStyles = useMemo(() => StyleSheet.create({
+    text: {
+      fontSize: FONT_SIZES.md,
+      fontFamily: FONTS.regular,
+      color: colors.textPrimary,
+      lineHeight: 22,
+      marginBottom: SPACING.xs,
+    },
+    textUser: {
+      color: colors.background,
+    },
+    codeContainer: {
+      marginTop: SPACING.xs,
+      marginBottom: SPACING.xs,
+      borderRadius: BORDER_RADIUS.md,
+      overflow: 'hidden' as const,
+      backgroundColor: colors.codeBackground,
+      borderWidth: 1,
+      borderColor: colors.codeBorder,
+    },
+    codeHeader: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingHorizontal: SPACING.md,
+      paddingVertical: SPACING.sm,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.codeBorder,
+    },
+    codeLang: {
+      fontSize: FONT_SIZES.xs,
+      fontFamily: FONTS.bold,
+      color: colors.textPrimary,
+      textTransform: 'uppercase' as const,
+    },
+    copyText: {
+      fontSize: FONT_SIZES.xs,
+      fontFamily: FONTS.medium,
+      color: colors.primary,
+    },
+    codeText: {
+      fontFamily: 'monospace',
+      fontSize: FONT_SIZES.sm,
+      color: colors.codeText,
+      lineHeight: 20,
+    },
+  }), [colors]);
 
   const handleCopy = (code: string) => {
     Clipboard.setString(code);
@@ -64,20 +114,20 @@ export function MessageContent({ text, isUser = false }: MessageContentProps) {
       {parts.map((part, index) => {
         if (part.type === 'code') {
           return (
-            <View key={index} style={styles.codeContainer}>
-              <View style={styles.codeHeader}>
-                <Text style={styles.codeLang}>{part.lang.toUpperCase()}</Text>
+            <View key={index} style={themedStyles.codeContainer}>
+              <View style={themedStyles.codeHeader}>
+                <Text style={themedStyles.codeLang}>{part.lang.toUpperCase()}</Text>
                 <TouchableOpacity
                   style={styles.copyButton}
                   onPress={() => handleCopy(part.content)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                  <Ionicons name="copy-outline" size={16} color={COLORS.primary} />
-                  <Text style={styles.copyText}>Copy</Text>
+                  <Ionicons name="copy-outline" size={16} color={colors.primary} />
+                  <Text style={themedStyles.copyText}>Copy</Text>
                 </TouchableOpacity>
               </View>
               <View style={styles.codeBlock}>
-                <Text style={styles.codeText} selectable>
+                <Text style={themedStyles.codeText} selectable>
                   {part.content}
                 </Text>
               </View>
@@ -86,7 +136,7 @@ export function MessageContent({ text, isUser = false }: MessageContentProps) {
         }
         
         return (
-          <Text key={index} style={[styles.text, isUser && styles.textUser]}>
+          <Text key={index} style={[themedStyles.text, isUser && themedStyles.textUser]}>
             {part.content}
           </Text>
         );
@@ -99,58 +149,13 @@ const styles = StyleSheet.create({
   container: {
     gap: SPACING.sm,
   },
-  text: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.regular,
-    color: COLORS.textPrimary,
-    lineHeight: 22,
-    marginBottom: SPACING.xs,
-  },
-  textUser: {
-    color: COLORS.background,
-  },
-  codeContainer: {
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.xs,
-    borderRadius: BORDER_RADIUS.md,
-    overflow: 'hidden',
-    backgroundColor: COLORS.codeBackground,
-    borderWidth: 1,
-    borderColor: COLORS.codeBorder,
-  },
-  codeHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.codeBorder,
-  },
-  codeLang: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    textTransform: 'uppercase',
-  },
   copyButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  copyText: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.primary,
-  },
   codeBlock: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-  },
-  codeText: {
-    fontFamily: 'monospace',
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.codeText,
-    lineHeight: 20,
   },
 });

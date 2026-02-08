@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,55 +15,71 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  withSpring,
   FadeIn,
   FadeInDown,
+  FadeInUp,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, STORAGE_KEYS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, STORAGE_KEYS } from '../constants/theme';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-const SLIDES = [
-  {
-    id: '1',
-    title: 'Learn Programming',
-    description: 'Master programming languages step by step with interactive lessons and structured learning paths.',
-    icon: 'book',
-    gradient: ['#6366F1', '#8B5CF6'], // Indigo to Purple
-  },
-  {
-    id: '2',
-    title: 'AI-Powered Mentor',
-    description: 'Get instant help and guidance from your AI mentor. Ask questions and receive personalized learning support.',
-    icon: 'chatbubbles',
-    gradient: ['#06B6D4', '#3B82F6'], // Cyan to Blue
-  },
-  {
-    id: '3',
-    title: 'Track Your Progress',
-    description: 'Monitor your learning journey, bookmark articles, and see your achievements as you master new skills.',
-    icon: 'trending-up',
-    gradient: ['#8B5CF6', COLORS.primary],
-  },
-  {
-    id: '4',
-    title: 'Start Your Journey',
-    description: 'Join thousands of learners mastering programming with CodeVerse. Your coding adventure starts here!',
-    icon: 'rocket',
-    gradient: ['#EC4899', '#F59E0B'], // Pink to Orange
-  },
-];
+interface Slide {
+  id: string;
+  title: string;
+  description: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  gradient: [string, string];
+  accentIcon?: string;
+}
+
+function getSlides(primaryColor: string): Slide[] {
+  return [
+    {
+      id: '1',
+      title: 'Learn by Doing',
+      description: 'Master programming languages step by step with structured lessons, articles, and hands-on paths—like your favorite learning sites, all in one app.',
+      icon: 'book-outline',
+      gradient: ['#6366F1', '#8B5CF6'],
+    },
+    {
+      id: '2',
+      title: 'AI Mentor at Your Side',
+      description: 'Get instant help while learning. Ask questions, prepare for interviews, and practice with AI—powered by advanced models.',
+      icon: 'chatbubble-ellipses-outline',
+      gradient: ['#06B6D4', '#3B82F6'],
+    },
+    {
+      id: '3',
+      title: 'Track Your Growth',
+      description: 'Monitor progress, bookmark articles, and see your achievements as you level up. Streaks keep you motivated.',
+      icon: 'trending-up-outline',
+      gradient: ['#8B5CF6', primaryColor],
+    },
+    {
+      id: '4',
+      title: 'Start Your Journey',
+      description: 'Join thousands of learners mastering programming with CodeVerse. Your coding adventure starts now.',
+      icon: 'rocket-outline',
+      gradient: ['#EC4899', '#F59E0B'],
+    },
+  ];
+}
 
 export function OnboardingSlidesScreen() {
+  const { colors } = useTheme();
   const navigation = useNavigation<NavigationProp>();
   const [index, setIndex] = useState(0);
   const listRef = useRef<FlatList>(null);
+  const SLIDES = useMemo(() => getSlides(colors.primary), [colors.primary]);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const i = Math.round(e.nativeEvent.contentOffset.x / width);
@@ -82,7 +98,6 @@ export function OnboardingSlidesScreen() {
     if (index < SLIDES.length - 1) {
       listRef.current?.scrollToIndex({ index: index + 1, animated: true });
     } else {
-      // Last slide - mark as shown and navigate to login
       await markOnboardingShown();
       navigation.replace('Login');
     }
@@ -99,14 +114,60 @@ export function OnboardingSlidesScreen() {
     }
   };
 
+  const themedStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        skipText: {
+          fontSize: FONT_SIZES.md,
+          fontFamily: FONTS.semiBold,
+          color: colors.textMuted,
+        },
+        progressDot: {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: colors.border,
+        },
+        progressDotActive: {
+          width: 28,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: colors.primary,
+        },
+        title: {
+          fontSize: 28,
+          fontFamily: FONTS.bold,
+          color: colors.textPrimary,
+          textAlign: 'center' as const,
+          marginBottom: SPACING.md,
+          letterSpacing: -0.5,
+          lineHeight: 34,
+        },
+        description: {
+          fontSize: FONT_SIZES.lg,
+          fontFamily: FONTS.regular,
+          color: colors.textSecondary,
+          textAlign: 'center' as const,
+          lineHeight: 26,
+          paddingHorizontal: SPACING.lg,
+        },
+      }),
+    [colors]
+  );
+
   return (
-    <LinearGradient
-      colors={[COLORS.background, '#0A0F1C', COLORS.background]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.container}
-    >
-      <SafeAreaView style={styles.safe}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={[
+          colors.background,
+          colors.backgroundElevated || colors.backgroundCard,
+          colors.background,
+        ]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <SafeAreaView style={styles.safe} edges={['top']}>
         {/* Top Bar */}
         <View style={styles.topBar}>
           {index > 0 ? (
@@ -114,26 +175,27 @@ export function OnboardingSlidesScreen() {
               onPress={goBack}
               style={styles.backButton}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
             >
-              <Ionicons name="chevron-back" size={24} color={COLORS.textPrimary} />
+              <Ionicons name="chevron-back" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
           ) : (
             <View style={styles.backButton} />
           )}
-          
-          <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
-            <Text style={styles.skipText}>Skip</Text>
+
+          <TouchableOpacity onPress={onSkip} style={styles.skipButton} activeOpacity={0.7}>
+            <Text style={themedStyles.skipText}>Skip</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Progress Indicators */}
+        {/* Progress */}
         <View style={styles.progressContainer}>
           {SLIDES.map((_, i) => (
             <View
               key={i}
               style={[
-                styles.progressDot,
-                i === index ? styles.progressDotActive : styles.progressDotInactive,
+                themedStyles.progressDot,
+                i === index && themedStyles.progressDotActive,
               ]}
             />
           ))}
@@ -154,29 +216,30 @@ export function OnboardingSlidesScreen() {
               slide={item}
               isActive={slideIndex === index}
               index={slideIndex}
+              themedStyles={themedStyles}
             />
           )}
         />
 
-        {/* Bottom Button */}
+        {/* CTA */}
         <View style={styles.footer}>
           <TouchableOpacity
             onPress={onNext}
-            style={styles.nextButton}
-            activeOpacity={0.8}
+            style={styles.ctaTouch}
+            activeOpacity={0.9}
           >
             <LinearGradient
               colors={SLIDES[index].gradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={styles.nextButtonGradient}
+              style={styles.ctaGradient}
             >
-              <Text style={styles.nextButtonText}>
+              <Text style={styles.ctaText}>
                 {index === SLIDES.length - 1 ? 'Get Started' : 'Next'}
               </Text>
               <Ionicons
                 name={index === SLIDES.length - 1 ? 'arrow-forward' : 'chevron-forward'}
-                size={20}
+                size={22}
                 color="#FFFFFF"
                 style={{ marginLeft: 8 }}
               />
@@ -184,59 +247,65 @@ export function OnboardingSlidesScreen() {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
-    </LinearGradient>
+    </View>
   );
 }
 
-function SlideItem({ slide, isActive, index }: { slide: typeof SLIDES[0]; isActive: boolean; index: number }) {
+function SlideItem({
+  slide,
+  isActive,
+  themedStyles,
+}: {
+  slide: Slide;
+  isActive: boolean;
+  index: number;
+  themedStyles: {
+    title: object;
+    description: object;
+  };
+}) {
+  const scale = useSharedValue(0.9);
   const opacity = useSharedValue(0);
-  const translateY = useSharedValue(30);
 
   React.useEffect(() => {
     if (isActive) {
-      opacity.value = withTiming(1, { duration: 500 });
-      translateY.value = withTiming(0, { duration: 500 });
+      scale.value = withSpring(1, { damping: 15, stiffness: 120 });
+      opacity.value = withTiming(1, { duration: 400 });
     } else {
+      scale.value = 0.9;
       opacity.value = 0;
-      translateY.value = 30;
     }
   }, [isActive]);
 
   const animatedStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
-    transform: [{ translateY: translateY.value }],
+    transform: [{ scale: scale.value }],
   }));
 
   return (
     <View style={styles.slide}>
       <Animated.View style={[styles.slideContent, animatedStyle]}>
-        {/* Icon Container */}
-        <Animated.View
-          entering={FadeIn.delay(200)}
-          style={styles.iconContainer}
-        >
+        <Animated.View entering={FadeIn.delay(150)} style={styles.iconWrapper}>
           <LinearGradient
             colors={slide.gradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.iconGradient}
           >
-            <Ionicons name={slide.icon as any} size={64} color="#FFFFFF" />
+            <Ionicons name={slide.icon} size={56} color="#FFFFFF" />
           </LinearGradient>
         </Animated.View>
 
-        {/* Title */}
         <Animated.Text
-          entering={FadeInDown.delay(300)}
-          style={styles.title}
+          entering={FadeInDown.delay(250).springify()}
+          style={themedStyles.title}
         >
           {slide.title}
         </Animated.Text>
 
-        {/* Description */}
         <Animated.Text
-          entering={FadeInDown.delay(400)}
-          style={styles.description}
+          entering={FadeInUp.delay(350)}
+          style={themedStyles.description}
         >
           {slide.description}
         </Animated.Text>
@@ -257,43 +326,25 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.sm,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
   },
   backButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'flex-start',
   },
   skipButton: {
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
-  },
-  skipText: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMuted,
   },
   progressContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: SPACING.md,
-    gap: SPACING.xs,
-  },
-  progressDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.backgroundElevated,
-  },
-  progressDotActive: {
-    width: 24,
-    backgroundColor: COLORS.primary,
-  },
-  progressDotInactive: {
-    backgroundColor: COLORS.backgroundElevated,
+    gap: 8,
   },
   slide: {
     width,
@@ -307,62 +358,46 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: '100%',
   },
-  iconContainer: {
+  iconWrapper: {
     marginBottom: SPACING.xl,
   },
   iconGradient: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.primary,
+    justifyContent: 'center',
+    shadowColor: '#6366F1',
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  title: {
-    fontSize: FONT_SIZES.hero,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    marginBottom: SPACING.md,
-    letterSpacing: -0.5,
-  },
-  description: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    lineHeight: 26,
-    paddingHorizontal: SPACING.lg,
+    shadowOpacity: 0.35,
+    shadowRadius: 20,
+    elevation: 12,
   },
   footer: {
     paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.xl,
+    paddingBottom: SPACING.xxl,
     paddingTop: SPACING.lg,
   },
-  nextButton: {
+  ctaTouch: {
     borderRadius: BORDER_RADIUS.full,
     overflow: 'hidden',
-    shadowColor: COLORS.primary,
+    shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  nextButtonGradient: {
+  ctaGradient: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md + 2,
+    paddingHorizontal: SPACING.xxl,
   },
-  nextButtonText: {
+  ctaText: {
     fontSize: FONT_SIZES.lg,
     fontFamily: FONTS.bold,
     color: '#FFFFFF',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });

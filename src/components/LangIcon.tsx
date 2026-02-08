@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, Image, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS, FONTS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { FONTS } from '../constants/theme';
 import type { LogoSource } from '../data/langLogos';
 
 type LangIconProps = {
@@ -18,16 +19,29 @@ function isSvgComponent(source: LogoSource): source is React.ComponentType<{ wid
   return typeof source === 'function';
 }
 
-export function LangIcon({ iconUri, iconSource, name, size = 40, accentColor = COLORS.primary, style }: LangIconProps) {
+export function LangIcon({ iconUri, iconSource, name, size = 40, accentColor, style }: LangIconProps) {
+  const { colors } = useTheme();
+  const resolvedAccentColor = accentColor ?? colors.primary;
   const [error, setError] = useState(false);
   const hasLocal = iconSource != null;
   const hasRemote = iconUri && !error;
   const showContent = hasLocal || hasRemote;
 
+  const themedStyles = useMemo(() => StyleSheet.create({
+    wrap: {
+      overflow: 'hidden' as const,
+      backgroundColor: colors.backgroundElevated,
+    },
+    letter: {
+      fontFamily: FONTS.bold,
+      color: colors.textPrimary,
+    },
+  }), [colors]);
+
   if (showContent && hasLocal && isSvgComponent(iconSource)) {
     const Svg = iconSource;
     return (
-      <View style={[styles.wrap, { width: size, height: size, borderRadius: size / 4 }, style]}>
+      <View style={[themedStyles.wrap, { width: size, height: size, borderRadius: size / 4 }, style]}>
         <Svg width={size} height={size} />
       </View>
     );
@@ -36,7 +50,7 @@ export function LangIcon({ iconUri, iconSource, name, size = 40, accentColor = C
   const imageSource = showContent && hasLocal ? (iconSource as any) : showContent ? { uri: iconUri! } : null;
 
   return (
-    <View style={[styles.wrap, { width: size, height: size, borderRadius: size / 4 }, style]}>
+    <View style={[themedStyles.wrap, { width: size, height: size, borderRadius: size / 4 }, style]}>
       {imageSource ? (
         <Image
           source={imageSource}
@@ -45,8 +59,8 @@ export function LangIcon({ iconUri, iconSource, name, size = 40, accentColor = C
           onError={() => setError(true)}
         />
       ) : (
-        <View style={[styles.fallback, { backgroundColor: accentColor, width: size, height: size, borderRadius: size / 4 }]}>
-          <Text style={[styles.letter, { fontSize: size * 0.4 }]} numberOfLines={1}>
+        <View style={[styles.fallback, { backgroundColor: resolvedAccentColor, width: size, height: size, borderRadius: size / 4 }]}>
+          <Text style={[themedStyles.letter, { fontSize: size * 0.4 }]} numberOfLines={1}>
             {name.charAt(0).toUpperCase()}
           </Text>
         </View>
@@ -56,19 +70,11 @@ export function LangIcon({ iconUri, iconSource, name, size = 40, accentColor = C
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    overflow: 'hidden',
-    backgroundColor: COLORS.backgroundElevated,
-  },
   img: {
     backgroundColor: 'transparent',
   },
   fallback: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  letter: {
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
   },
 });

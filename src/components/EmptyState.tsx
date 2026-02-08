@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, FONTS } from '../constants/theme';
 import * as Haptics from 'expo-haptics';
 
 type EmptyStateProps = {
@@ -21,8 +22,56 @@ export function EmptyState({
   actionLabel,
   onAction,
   style,
-  iconColor = COLORS.textMuted,
+  iconColor,
 }: EmptyStateProps) {
+  const { colors } = useTheme();
+  const resolvedIconColor = iconColor ?? colors.textMuted;
+
+  const themedStyles = useMemo(() => StyleSheet.create({
+    iconWrap: {
+      width: 80,
+      height: 80,
+      borderRadius: 40,
+      backgroundColor: colors.backgroundElevated,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      marginBottom: SPACING.lg,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    title: {
+      fontSize: FONT_SIZES.lg,
+      fontFamily: FONTS.bold,
+      color: colors.textPrimary,
+      textAlign: 'center' as const,
+      marginBottom: SPACING.sm,
+    },
+    subtitle: {
+      fontSize: FONT_SIZES.sm,
+      fontFamily: FONTS.regular,
+      color: colors.textMuted,
+      textAlign: 'center' as const,
+      marginBottom: SPACING.lg,
+      lineHeight: 20,
+    },
+    button: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: SPACING.xs,
+      paddingHorizontal: SPACING.lg,
+      paddingVertical: SPACING.sm,
+      borderRadius: BORDER_RADIUS.lg,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryMuted,
+    },
+    buttonText: {
+      fontSize: FONT_SIZES.md,
+      fontFamily: FONTS.medium,
+      color: colors.primary,
+    },
+  }), [colors]);
+
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onAction?.();
@@ -30,23 +79,23 @@ export function EmptyState({
 
   return (
     <View style={[styles.container, style]} accessibilityRole="summary">
-      <View style={styles.iconWrap}>
-        <Ionicons name={icon} size={48} color={iconColor} />
+      <View style={themedStyles.iconWrap}>
+        <Ionicons name={icon} size={48} color={resolvedIconColor} />
       </View>
-      <Text style={styles.title}>{title}</Text>
+      <Text style={themedStyles.title}>{title}</Text>
       {subtitle ? (
-        <Text style={styles.subtitle}>{subtitle}</Text>
+        <Text style={themedStyles.subtitle}>{subtitle}</Text>
       ) : null}
       {actionLabel && onAction ? (
         <TouchableOpacity
-          style={styles.button}
+          style={themedStyles.button}
           onPress={handlePress}
           activeOpacity={0.8}
           accessibilityRole="button"
           accessibilityLabel={actionLabel}
         >
-          <Text style={styles.buttonText}>{actionLabel}</Text>
-          <Ionicons name="arrow-forward" size={16} color={COLORS.primary} />
+          <Text style={themedStyles.buttonText}>{actionLabel}</Text>
+          <Ionicons name="arrow-forward" size={16} color={colors.primary} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -58,47 +107,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.lg,
-  },
-  iconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.backgroundElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.borderLight,
-  },
-  title: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-    marginBottom: SPACING.sm,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginBottom: SPACING.lg,
-    lineHeight: 20,
-  },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryMuted,
-  },
-  buttonText: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.primary,
-    color: COLORS.primary,
   },
 });

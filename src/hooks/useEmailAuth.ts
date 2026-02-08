@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { useTokens } from '../context/TokenContext';
-import { registerEmail, loginEmail, requestMagicLink } from '../services/api';
+import { registerEmail, loginEmail, requestPasswordReset, resetPassword } from '../services/api';
 import type { AuthTokens } from '../types';
 
 export function useEmailAuth() {
@@ -20,15 +19,24 @@ export function useEmailAuth() {
         expiresAt: result.expiresAt,
       }, false);
       
-      // Sync token usage from backend response
+      // Sync token usage in background (non-blocking)
       if (result.tokenUsage) {
-        await refreshTokens();
+        refreshTokens().catch(() => {});
       }
       
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Registration failed. Please try again.';
-      Alert.alert('Registration Failed', message);
+      let message = error instanceof Error ? error.message : 'Registration failed. Please try again.';
+      
+      // Provide user-friendly messages for common errors
+      if (message.includes('timed out') || message.includes('timeout')) {
+        message = 'Registration is taking longer than expected. Please check your internet connection and try again.';
+      } else if (message.includes('Network') || message.includes('network')) {
+        message = 'Unable to connect. Please check your internet connection and try again.';
+      } else if (message.includes('multiple attempts')) {
+        message = 'Server is busy. Please wait a moment and try again.';
+      }
+      
       return { success: false, error: message };
     } finally {
       setIsLoading(false);
@@ -66,28 +74,41 @@ export function useEmailAuth() {
       return { success: true };
     } catch (error) {
       setIsLoading(false);
-      const message = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
-      // Don't show alert for MFA requirement
-      if (!message.includes('MFA')) {
-        Alert.alert('Login Failed', message);
+      let message = error instanceof Error ? error.message : 'Login failed. Please check your credentials.';
+      
+      // Provide user-friendly messages for common errors
+      if (message.includes('timed out') || message.includes('timeout')) {
+        message = 'Login is taking longer than expected. Please check your internet connection and try again.';
+      } else if (message.includes('Network') || message.includes('network')) {
+        message = 'Unable to connect. Please check your internet connection and try again.';
+      } else if (message.includes('multiple attempts')) {
+        message = 'Server is busy. Please wait a moment and try again.';
       }
+      
       return { success: false, error: message };
     }
   };
 
-  const sendMagicLink = async (email: string, redirectUrl?: string) => {
+  const requestForgotPassword = async (email: string) => {
     setIsLoading(true);
     try {
-      await requestMagicLink(email, redirectUrl);
-      Alert.alert(
-        'Magic Link Sent',
-        'Check your email for a sign-in link. It will expire in 15 minutes.',
-        [{ text: 'OK' }]
-      );
+      await requestPasswordReset(email);
       return { success: true };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send magic link. Please try again.';
-      Alert.alert('Error', message);
+      const message = error instanceof Error ? error.message : 'Failed to send reset link. Please try again.';
+      return { success: false, error: message };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const performResetPassword = async (token: string, newPassword: string) => {
+    setIsLoading(true);
+    try {
+      await resetPassword(token, newPassword);
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to reset password. Please try again.';
       return { success: false, error: message };
     } finally {
       setIsLoading(false);
@@ -97,7 +118,8 @@ export function useEmailAuth() {
   return {
     register,
     login,
-    sendMagicLink,
+    requestForgotPassword,
+    performResetPassword,
     isLoading,
   };
 }

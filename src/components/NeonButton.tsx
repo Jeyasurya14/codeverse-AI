@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   TouchableOpacity,
   Text,
@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, SHADOWS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, SHADOWS } from '../constants/theme';
 
 type Variant = 'primary' | 'secondary' | 'outline' | 'gradientBorder';
 
@@ -26,12 +27,6 @@ type NeonButtonProps = {
   pill?: boolean;
 };
 
-const gradientColors: Record<Exclude<Variant, 'gradientBorder'>, [string, string]> = {
-  primary: [COLORS.primary, COLORS.primaryDark],
-  secondary: [COLORS.secondary, COLORS.secondaryDark],
-  outline: [COLORS.backgroundCard, COLORS.backgroundCard],
-};
-
 const BORDER_WIDTH = 2;
 
 export function NeonButton({
@@ -44,10 +39,40 @@ export function NeonButton({
   textStyle,
   pill = false,
 }: NeonButtonProps) {
+  const { colors } = useTheme();
   const isOutline = variant === 'outline';
   const isGradientBorder = variant === 'gradientBorder';
 
+  const gradientColors: Record<Exclude<Variant, 'gradientBorder'>, [string, string]> = useMemo(() => ({
+    primary: [colors.primary, colors.primaryDark],
+    secondary: [colors.secondary, colors.secondaryDark],
+    outline: [colors.backgroundCard, colors.backgroundCard],
+  }), [colors]);
+
   const radius = pill ? 28 : BORDER_RADIUS.lg;
+
+  const themedStyles = useMemo(() => StyleSheet.create({
+    gradientBorderInner: {
+      backgroundColor: colors.backgroundAuth,
+      paddingVertical: SPACING.md,
+      paddingHorizontal: SPACING.xl,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      minHeight: 52,
+      width: '100%',
+    },
+    gradientBorderText: { color: colors.textPrimary },
+    outlineBorder: {
+      borderWidth: 2,
+      borderColor: colors.primary,
+    },
+    text: {
+      fontSize: FONT_SIZES.lg,
+      fontFamily: FONTS.medium,
+      color: colors.textPrimary,
+    },
+    outlineText: { color: colors.primary },
+  }), [colors]);
 
   const a11y = {
     accessibilityRole: 'button' as const,
@@ -71,16 +96,16 @@ export function NeonButton({
         {...a11y}
       >
         <LinearGradient
-          colors={COLORS.gradientPrimary}
+          colors={colors.gradientPrimary}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
           style={[styles.gradientBorderOuter, { borderRadius: radius, padding: BORDER_WIDTH }]}
         >
-          <View style={[styles.gradientBorderInner, { borderRadius: radius - BORDER_WIDTH }, (disabled || loading) && styles.disabled]}>
+          <View style={[themedStyles.gradientBorderInner, { borderRadius: radius - BORDER_WIDTH }, (disabled || loading) && styles.disabled]}>
             {loading ? (
-              <ActivityIndicator color={COLORS.primary} />
+              <ActivityIndicator color={colors.primary} />
             ) : (
-              <Text style={[styles.text, styles.gradientBorderText, textStyle]}>{title}</Text>
+              <Text style={[themedStyles.text, themedStyles.gradientBorderText, textStyle]}>{title}</Text>
             )}
           </View>
         </LinearGradient>
@@ -103,17 +128,17 @@ export function NeonButton({
         style={[
           styles.gradient,
           { borderRadius: radius },
-          isOutline && styles.outlineBorder,
+          isOutline && themedStyles.outlineBorder,
           (disabled || loading) && styles.disabled,
         ]}
       >
         {loading ? (
-          <ActivityIndicator color={isOutline ? COLORS.primary : COLORS.textPrimary} />
+          <ActivityIndicator color={isOutline ? colors.primary : colors.textPrimary} />
         ) : (
           <Text
             style={[
-              styles.text,
-              isOutline && styles.outlineText,
+              themedStyles.text,
+              isOutline && themedStyles.outlineText,
               textStyle,
             ]}
           >
@@ -141,31 +166,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gradientBorderInner: {
-    backgroundColor: COLORS.backgroundAuth,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 52,
-    width: '100%',
-  },
-  gradientBorderText: {
-    color: COLORS.textPrimary,
-  },
-  outlineBorder: {
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
   disabled: {
     opacity: 0.6,
-  },
-  text: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.primary,
-    color: COLORS.textPrimary,
-  },
-  outlineText: {
-    color: COLORS.primary,
   },
 });

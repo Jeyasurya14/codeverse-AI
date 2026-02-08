@@ -38,7 +38,7 @@ This document provides detailed specifications for creating the Google Play Stor
 ## Color Palette
 
 ### Primary Colors
-- **Background:** `#0C1222` (Dark blue - matches app theme)
+- **Background:** `` (Dark blue - matches app theme)
 - **Background Gradient:** `#0C1222` → `#1A2332` (subtle gradient)
 - **Primary Text:** `#FFFFFF` (White)
 - **Secondary Text:** `#6C9EFF` (Light blue - matches app accent)

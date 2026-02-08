@@ -37,7 +37,15 @@
     "scheme": "codeverse-ai",
     "plugins": [
       "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#3B82F6",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "eas": {

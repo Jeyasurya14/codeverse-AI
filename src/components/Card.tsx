@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS, BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 
 type CardProps = {
   children: React.ReactNode;
@@ -22,12 +23,32 @@ export function Card({
   elevated = false,
   interactive = false,
 }: CardProps) {
+  const { colors } = useTheme();
+
+  const themedStyles = useMemo(() => StyleSheet.create({
+    card: {
+      backgroundColor: colors.backgroundCard,
+      borderRadius: BORDER_RADIUS.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden' as const,
+      ...SHADOWS.card,
+    },
+    cardElevated: {
+      ...SHADOWS.cardElevated,
+      borderColor: colors.borderHover,
+    },
+    cardInteractive: {
+      borderColor: colors.borderLight,
+    },
+  }), [colors]);
+
   return (
     <View 
       style={[
-        styles.card, 
-        elevated && styles.cardElevated,
-        interactive && styles.cardInteractive,
+        themedStyles.card, 
+        elevated && themedStyles.cardElevated,
+        interactive && themedStyles.cardInteractive,
         style
       ]}
     >
@@ -42,21 +63,6 @@ export function Card({
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: COLORS.backgroundCard,
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    overflow: 'hidden',
-    ...SHADOWS.card,
-  },
-  cardElevated: {
-    ...SHADOWS.cardElevated,
-    borderColor: COLORS.borderHover,
-  },
-  cardInteractive: {
-    borderColor: COLORS.borderLight,
-  },
   accent: {
     position: 'absolute',
     left: 0,

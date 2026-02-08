@@ -1,11 +1,22 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Alert,
+} from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { MOCK_ARTICLES, MOCK_LANGUAGES } from '../data/mockContent';
-import { COLORS, SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, SHADOWS } from '../constants/theme';
+import { SPACING, FONT_SIZES, BORDER_RADIUS, FONTS, SHADOWS } from '../constants/theme';
 import { Article } from '../types';
 import { useProgress } from '../context/ProgressContext';
+import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { LangIcon } from '../components/LangIcon';
 import { getLocalLogo } from '../data/langLogos';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -15,36 +26,38 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ArticleList'>;
 
 export function ArticleListScreen({ navigation, route }: Props) {
   const { languageId, languageName } = route.params;
+  const { colors } = useTheme();
+  const { t } = useLanguage();
+  const insets = useSafeAreaInsets();
   const articles: Article[] = MOCK_ARTICLES[languageId] ?? [];
   const { completedArticleIds } = useProgress();
   const [refreshing, setRefreshing] = useState(false);
-  
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await new Promise((r) => setTimeout(r, 600));
     setRefreshing(false);
   }, [languageId]);
 
-  // UI-only calculations for display (no data modification)
-  const completedCount = articles.filter(a => completedArticleIds.includes(a.id)).length;
+  const completedCount = articles.filter((a) => completedArticleIds.includes(a.id)).length;
   const totalCount = articles.length;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
-  
-  // Sort articles for display (original data unchanged)
-  const sortedArticles = useMemo(() => {
-    return [...articles].sort((a, b) => a.order - b.order);
-  }, [articles]);
-  
-  // Find active article index for UI display
-  const activeArticleIndex = sortedArticles.findIndex(a => !completedArticleIds.includes(a.id));
-  const lessonsToMilestone = activeArticleIndex >= 0 && activeArticleIndex < sortedArticles.length - 1 ? 1 : 0;
 
-  // Get article status
+  const sortedArticles = useMemo(
+    () => [...articles].sort((a, b) => a.order - b.order),
+    [articles]
+  );
+
+  const activeArticleIndex = sortedArticles.findIndex(
+    (a) => !completedArticleIds.includes(a.id)
+  );
+  const lessonsToMilestone =
+    activeArticleIndex >= 0 && activeArticleIndex < sortedArticles.length - 1 ? 1 : 0;
+
   const getArticleStatus = (article: Article, index: number) => {
     const isCompleted = completedArticleIds.includes(article.id);
     const isActive = !isCompleted && index === activeArticleIndex;
     const isLocked = !isCompleted && index > activeArticleIndex;
-    
     if (isCompleted) return 'completed';
     if (isActive) return 'active';
     return 'locked';
@@ -55,28 +68,330 @@ export function ArticleListScreen({ navigation, route }: Props) {
     [languageId]
   );
 
+  const handleModulePress = (article: Article, status: string) => {
+    if (status === 'locked') {
+      Alert.alert(
+        'Locked',
+        'Complete the previous lesson first to unlock this one.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    navigation.navigate('ArticleDetail', { article, languageName });
+  };
+
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        container: { flex: 1, backgroundColor: colors.background },
+        safe: { flex: 1 },
+        header: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingHorizontal: SPACING.lg,
+          paddingVertical: SPACING.md,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        },
+        backBtn: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: SPACING.xs,
+          padding: SPACING.xs,
+          marginLeft: -SPACING.xs,
+        },
+        backText: {
+          fontSize: FONT_SIZES.sm,
+          fontFamily: FONTS.medium,
+          color: colors.primary,
+        },
+        headerTitle: {
+          fontSize: FONT_SIZES.lg,
+          fontFamily: FONTS.bold,
+          color: colors.textPrimary,
+          letterSpacing: -0.4,
+        },
+        headerRightBtn: {
+          padding: SPACING.xs,
+        },
+        scroll: { flex: 1 },
+        scrollContent: {
+          paddingHorizontal: SPACING.lg,
+          paddingBottom: insets.bottom + SPACING.xxl,
+        },
+        hero: {
+          borderRadius: BORDER_RADIUS.xl,
+          overflow: 'hidden',
+          marginTop: SPACING.md,
+          marginBottom: SPACING.xl,
+          ...SHADOWS.card,
+        },
+        heroGradient: {
+          padding: SPACING.xl,
+        },
+        heroIconWrap: {
+          width: 64,
+          height: 64,
+          borderRadius: 32,
+          backgroundColor: 'rgba(255,255,255,0.2)',
+          alignItems: 'center',
+          justifyContent: 'center',
+          marginBottom: SPACING.md,
+        },
+        heroLabel: {
+          fontSize: FONT_SIZES.xs,
+          fontFamily: FONTS.semiBold,
+          color: 'rgba(255,255,255,0.9)',
+          textTransform: 'uppercase',
+          letterSpacing: 1,
+          marginBottom: SPACING.xs,
+        },
+        heroTitle: {
+          fontSize: FONT_SIZES.xxl,
+          fontFamily: FONTS.bold,
+          color: colors.textPrimary,
+          marginBottom: SPACING.md,
+        },
+        progressRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: SPACING.md,
+          marginBottom: SPACING.sm,
+        },
+        progressBar: {
+          flex: 1,
+          height: 8,
+          backgroundColor: 'rgba(255,255,255,0.25)',
+          borderRadius: 4,
+          overflow: 'hidden',
+        },
+        progressFill: {
+          height: '100%',
+          backgroundColor: 'rgba(255,255,255,0.95)',
+          borderRadius: 4,
+        },
+        progressPill: {
+          backgroundColor: 'rgba(255,255,255,0.95)',
+          paddingHorizontal: SPACING.md,
+          paddingVertical: 6,
+          borderRadius: BORDER_RADIUS.full,
+          minWidth: 52,
+          alignItems: 'center',
+        },
+        progressPillText: {
+          fontSize: FONT_SIZES.sm,
+          fontFamily: FONTS.bold,
+          color: colors.primary,
+        },
+        motivationalText: {
+          fontSize: FONT_SIZES.sm,
+          fontFamily: FONTS.regular,
+          color: 'rgba(255,255,255,0.9)',
+        },
+        sectionHeader: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: SPACING.md,
+        },
+        sectionTitle: {
+          fontSize: FONT_SIZES.lg,
+          fontFamily: FONTS.bold,
+          color: colors.textPrimary,
+        },
+        modulesContainer: {
+          marginBottom: SPACING.lg,
+        },
+        moduleWrapper: {
+          position: 'relative',
+          marginBottom: SPACING.lg,
+        },
+        timelineLine: {
+          position: 'absolute',
+          left: 15,
+          top: 28,
+          width: 2,
+          height: '100%',
+          zIndex: 0,
+        },
+        timelineLineCompleted: {
+          backgroundColor: colors.primary,
+        },
+        timelineLineMuted: {
+          backgroundColor: colors.border,
+        },
+        aiBanner: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: colors.primary,
+          paddingHorizontal: SPACING.md,
+          paddingVertical: SPACING.sm,
+          borderRadius: BORDER_RADIUS.md,
+          marginBottom: SPACING.sm,
+          marginLeft: SPACING.xl + 10,
+          gap: SPACING.xs,
+        },
+        aiBannerText: {
+          fontSize: FONT_SIZES.xs,
+          fontFamily: FONTS.bold,
+          color: '#fff',
+          textTransform: 'uppercase',
+          letterSpacing: 0.5,
+        },
+        statusIndicator: {
+          position: 'absolute',
+          left: 0,
+          top: 0,
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderWidth: 2,
+          borderColor: colors.background,
+          zIndex: 2,
+        },
+        statusIndicatorCompleted: {
+          backgroundColor: colors.primary,
+        },
+        statusIndicatorActive: {
+          backgroundColor: colors.primary,
+        },
+        statusIndicatorLocked: {
+          backgroundColor: colors.backgroundCard,
+          borderColor: colors.border,
+        },
+        moduleCard: {
+          marginLeft: SPACING.xl + 10,
+          backgroundColor: colors.backgroundCard,
+          borderRadius: BORDER_RADIUS.lg,
+          padding: SPACING.lg,
+          borderWidth: 1,
+          borderColor: colors.border,
+          ...SHADOWS.card,
+        },
+        moduleCardActive: {
+          borderColor: colors.primary,
+          borderWidth: 2,
+        },
+        moduleCardLocked: {
+          borderStyle: 'dashed',
+          opacity: 0.7,
+        },
+        moduleHeader: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: SPACING.sm,
+        },
+        lessonPill: {
+          backgroundColor: colors.backgroundElevated,
+          paddingHorizontal: SPACING.sm,
+          paddingVertical: 4,
+          borderRadius: BORDER_RADIUS.sm,
+        },
+        lessonPillActive: {
+          backgroundColor: colors.primaryMuted,
+        },
+        lessonPillText: {
+          fontSize: FONT_SIZES.xs,
+          fontFamily: FONTS.semiBold,
+          color: colors.textMuted,
+        },
+        lessonPillActiveText: {
+          color: colors.primary,
+        },
+        levelTag: {
+          fontSize: FONT_SIZES.xs,
+          fontFamily: FONTS.medium,
+          color: colors.textMuted,
+          textTransform: 'capitalize',
+        },
+        moduleTitle: {
+          fontSize: FONT_SIZES.lg,
+          fontFamily: FONTS.bold,
+          color: colors.textPrimary,
+          marginBottom: SPACING.xs,
+        },
+        moduleMeta: {
+          fontSize: FONT_SIZES.sm,
+          fontFamily: FONTS.regular,
+          color: colors.textMuted,
+          marginBottom: SPACING.md,
+        },
+        continueBtn: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.primary,
+          paddingVertical: SPACING.md,
+          paddingHorizontal: SPACING.lg,
+          borderRadius: BORDER_RADIUS.md,
+          gap: SPACING.xs,
+        },
+        continueBtnText: {
+          fontSize: FONT_SIZES.md,
+          fontFamily: FONTS.bold,
+          color: '#fff',
+        },
+        viewBtn: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          paddingVertical: SPACING.sm,
+          paddingHorizontal: SPACING.md,
+          borderRadius: BORDER_RADIUS.md,
+          borderWidth: 1,
+          borderColor: colors.border,
+          alignSelf: 'flex-start',
+        },
+        viewBtnText: {
+          fontSize: FONT_SIZES.sm,
+          fontFamily: FONTS.medium,
+          color: colors.textPrimary,
+        },
+        reviewBtn: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: SPACING.xs,
+          paddingVertical: SPACING.sm,
+          paddingHorizontal: SPACING.md,
+          alignSelf: 'flex-start',
+        },
+        reviewBtnText: {
+          fontSize: FONT_SIZES.sm,
+          fontFamily: FONTS.medium,
+          color: colors.primary,
+        },
+      }),
+    [colors, insets.bottom]
+  );
+
   return (
     <View style={styles.container}>
       <SafeAreaView style={styles.safe} edges={['top']}>
-        {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.headerButton}
+          <TouchableOpacity
             onPress={() => navigation.goBack()}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={styles.backBtn}
+            activeOpacity={0.7}
           >
-            <Ionicons name="chevron-back" size={24} color={COLORS.textPrimary} />
+            <Ionicons name="chevron-back" size={22} color={colors.primary} />
+            <Text style={styles.backText}>{languageName}</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Your Path</Text>
-          <TouchableOpacity 
-            style={styles.headerButton}
-            onPress={() => Alert.alert('Your Path', 'Options', [
-              { text: 'Recharge tokens', onPress: () => navigation.navigate('RechargeTokens') },
-              { text: 'Cancel', style: 'cancel' },
-            ])}
+          <Text style={styles.headerTitle}>{t('articleList.yourPath').replace('{name}', languageName)}</Text>
+          <TouchableOpacity
+            style={styles.headerRightBtn}
+            onPress={() =>
+              Alert.alert(t('articleList.options'), t('articleList.whatWouldYouLike'), [
+                { text: t('articleList.rechargeTokens'), onPress: () => navigation.navigate('RechargeTokens') },
+                { text: t('common.cancel'), style: 'cancel' },
+              ])
+            }
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="settings-outline" size={24} color={COLORS.textPrimary} />
+            <Ionicons name="ellipsis-horizontal" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
         </View>
 
@@ -84,41 +399,48 @@ export function ArticleListScreen({ navigation, route }: Props) {
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.primary} />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
           }
           showsVerticalScrollIndicator={false}
         >
-          {/* Current Track Section */}
-          <View style={styles.currentTrackCard}>
-            <View style={styles.trackImageContainer}>
-              <View style={styles.trackImagePlaceholder}>
+          <View style={styles.hero}>
+            <LinearGradient
+              colors={[colors.primary, colors.primaryDark]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.heroGradient}
+            >
+              <View style={styles.heroIconWrap}>
                 <LangIcon
                   iconUri={trackLang?.icon}
                   iconSource={trackLang ? getLocalLogo(trackLang.slug) : null}
                   name={languageName}
-                  size={48}
-                  accentColor={COLORS.primary}
+                  size={40}
+                  accentColor="#fff"
                 />
               </View>
-            </View>
-            <Text style={styles.currentTrackLabel}>CURRENT TRACK</Text>
-            <Text style={styles.trackTitle}>{languageName}</Text>
-            <View style={styles.progressContainer}>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+              <Text style={styles.heroLabel}>CURRENT TRACK</Text>
+              <Text style={styles.heroTitle}>{languageName}</Text>
+              <View style={styles.progressRow}>
+                <View style={styles.progressBar}>
+                  <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                </View>
+                <View style={styles.progressPill}>
+                  <Text style={styles.progressPillText}>{progressPercent}%</Text>
+                </View>
               </View>
-              <View style={styles.progressTag}>
-                <Text style={styles.progressText}>{progressPercent}%</Text>
-              </View>
-            </View>
-            {lessonsToMilestone > 0 && (
               <Text style={styles.motivationalText}>
-                Keep going! You're {lessonsToMilestone} lesson{lessonsToMilestone !== 1 ? 's' : ''} away from your next milestone.
+                {lessonsToMilestone > 0
+                  ? `Keep going! ${lessonsToMilestone} lesson${lessonsToMilestone !== 1 ? 's' : ''} to next milestone.`
+                  : `${completedCount} of ${totalCount} lessons completed`}
               </Text>
-            )}
+            </LinearGradient>
           </View>
 
-          {/* Modules Timeline */}
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Lessons</Text>
+          </View>
+
           <View style={styles.modulesContainer}>
             {sortedArticles.map((article, index) => {
               const status = getArticleStatus(article, index);
@@ -126,89 +448,102 @@ export function ArticleListScreen({ navigation, route }: Props) {
               const isCompleted = status === 'completed';
               const isLocked = status === 'locked';
               const isRecommended = isActive && index === activeArticleIndex;
+              const isCompletedOrActive = isCompleted || isActive;
 
               return (
                 <View key={article.id} style={styles.moduleWrapper}>
-                  {/* Timeline Line */}
                   {index < sortedArticles.length - 1 && (
-                    <View style={[
-                      styles.timelineLine,
-                      isCompleted && styles.timelineLineCompleted,
-                      isActive && styles.timelineLineActive,
-                    ]} />
+                    <View
+                      style={[
+                        styles.timelineLine,
+                        isCompletedOrActive ? styles.timelineLineCompleted : styles.timelineLineMuted,
+                      ]}
+                    />
                   )}
 
-                  {/* AI Suggestion Banner */}
                   {isRecommended && (
                     <View style={styles.aiBanner}>
-                      <Ionicons name="sparkles" size={16} color={COLORS.background} />
-                      <Text style={styles.aiBannerText}>AI SUGGESTION: RECOMMENDED NEXT</Text>
+                      <Ionicons name="sparkles" size={16} color="#fff" />
+                      <Text style={styles.aiBannerText}>RECOMMENDED NEXT</Text>
                     </View>
                   )}
 
-                  {/* Status Indicator */}
-                  <View style={styles.statusIndicatorContainer}>
-                    <View style={[
+                  <View
+                    style={[
                       styles.statusIndicator,
                       isCompleted && styles.statusIndicatorCompleted,
                       isActive && styles.statusIndicatorActive,
                       isLocked && styles.statusIndicatorLocked,
-                    ]}>
-                      {isCompleted && <Ionicons name="checkmark" size={16} color={COLORS.background} />}
-                      {isActive && <Ionicons name="play" size={16} color={COLORS.background} />}
-                      {isLocked && <Ionicons name="lock-closed" size={16} color={COLORS.textMuted} />}
-                    </View>
+                    ]}
+                  >
+                    {isCompleted && <Ionicons name="checkmark" size={18} color="#fff" />}
+                    {isActive && <Ionicons name="play" size={16} color="#fff" />}
+                    {isLocked && <Ionicons name="lock-closed" size={16} color={colors.textMuted} />}
                   </View>
 
-                  {/* Module Card */}
-                  <View style={[
-                    styles.moduleCard,
-                    isActive && styles.moduleCardActive,
-                    isLocked && styles.moduleCardLocked,
-                  ]}>
+                  <TouchableOpacity
+                    activeOpacity={0.9}
+                    onPress={() => handleModulePress(article, status)}
+                    style={[
+                      styles.moduleCard,
+                      isActive && styles.moduleCardActive,
+                      isLocked && styles.moduleCardLocked,
+                    ]}
+                  >
                     <View style={styles.moduleHeader}>
-                      <Text style={[
-                        styles.moduleNumber,
-                        isActive && styles.moduleNumberActive,
-                        isLocked && styles.moduleNumberLocked,
-                      ]}>
-                        Module {index + 1}
-                      </Text>
-                      <Text style={[
-                        styles.moduleStatusTag,
-                        isCompleted && styles.moduleStatusTagCompleted,
-                        isActive && styles.moduleStatusTagActive,
-                        isLocked && styles.moduleStatusTagLocked,
-                      ]}>
-                        {status.toUpperCase()}
+                      <View
+                        style={[
+                          styles.lessonPill,
+                          isActive && styles.lessonPillActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.lessonPillText,
+                            isActive && styles.lessonPillActiveText,
+                          ]}
+                        >
+                          Lesson {index + 1}
+                        </Text>
+                      </View>
+                      <Text style={styles.levelTag}>
+                        {article.level} · {article.readTimeMinutes} min
                       </Text>
                     </View>
                     <Text style={styles.moduleTitle}>{article.title}</Text>
-                    <Text style={styles.moduleDescription}>
-                      {article.level === 'beginner' && 'Master the fundamentals and build a solid foundation.'}
-                      {article.level === 'intermediate' && 'Take your skills to the next level with advanced concepts.'}
-                      {article.level === 'advanced' && 'Expert-level techniques and best practices.'}
+                    <Text style={styles.moduleMeta}>
+                      {article.level === 'beginner' &&
+                        'Master the fundamentals and build a solid foundation.'}
+                      {article.level === 'intermediate' &&
+                        'Take your skills to the next level with advanced concepts.'}
+                      {article.level === 'advanced' &&
+                        'Expert-level techniques and best practices.'}
                     </Text>
                     {isActive && (
+                      <View style={styles.continueBtn}>
+                        <Text style={styles.continueBtnText}>
+                          {completedCount > 0 ? 'Continue' : 'Start'}
+                        </Text>
+                        <Ionicons name="chevron-forward" size={18} color="#fff" />
+                      </View>
+                    )}
+                    {isCompleted && (
                       <TouchableOpacity
-                        style={styles.resumeButton}
-                        onPress={() => navigation.navigate('ArticleDetail', { article, languageName })}
-                        activeOpacity={0.8}
+                        style={styles.reviewBtn}
+                        onPress={() => handleModulePress(article, status)}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                       >
-                        <Text style={styles.resumeButtonText}>Resume Lesson</Text>
-                        <Ionicons name="chevron-forward" size={18} color={COLORS.background} />
+                        <Text style={styles.reviewBtnText}>Review</Text>
+                        <Ionicons name="refresh" size={16} color={colors.primary} />
                       </TouchableOpacity>
                     )}
-                    {!isActive && !isLocked && (
-                      <TouchableOpacity
-                        style={styles.viewButton}
-                        onPress={() => navigation.navigate('ArticleDetail', { article, languageName })}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.viewButtonText}>View Article</Text>
-                      </TouchableOpacity>
+                    {isLocked && (
+                      <View style={styles.viewBtn}>
+                        <Text style={styles.viewBtnText}>Complete previous lesson</Text>
+                      </View>
                     )}
-                  </View>
+                  </TouchableOpacity>
                 </View>
               );
             })}
@@ -218,278 +553,3 @@ export function ArticleListScreen({ navigation, route }: Props) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
-  safe: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  headerButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.backgroundCard,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  headerTitle: {
-    fontSize: FONT_SIZES.title,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    letterSpacing: -0.4,
-  },
-  scroll: { flex: 1 },
-  scrollContent: { paddingBottom: SPACING.xxl },
-  
-  // Current Track Section
-  currentTrackCard: {
-    backgroundColor: COLORS.backgroundCard,
-    marginHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.lg,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.card,
-  },
-  trackImageContainer: {
-    width: '100%',
-    height: 120,
-    backgroundColor: COLORS.primaryMuted,
-  },
-  trackImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primaryMuted,
-  },
-  currentTrackLabel: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.primary,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-  },
-  trackTitle: {
-    fontSize: FONT_SIZES.xxl,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.xs,
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-    gap: SPACING.md,
-  },
-  progressBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: COLORS.border,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.primary,
-    borderRadius: 4,
-  },
-  progressTag: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.sm,
-    minWidth: 50,
-    alignItems: 'center',
-  },
-  progressText: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.bold,
-    color: COLORS.background,
-  },
-  motivationalText: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-  },
-
-  // Modules Timeline
-  modulesContainer: {
-    paddingHorizontal: SPACING.lg,
-  },
-  moduleWrapper: {
-    position: 'relative',
-    marginBottom: SPACING.lg,
-  },
-  timelineLine: {
-    position: 'absolute',
-    left: 11,
-    top: 24,
-    width: 2,
-    height: '100%',
-    backgroundColor: COLORS.border,
-    zIndex: 0,
-  },
-  timelineLineCompleted: {
-    backgroundColor: COLORS.primary,
-  },
-  timelineLineActive: {
-    backgroundColor: COLORS.primary,
-  },
-  aiBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-    marginBottom: SPACING.sm,
-    marginLeft: SPACING.xl + 8,
-    gap: SPACING.xs,
-  },
-  aiBannerText: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.bold,
-    color: COLORS.background,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  statusIndicatorContainer: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    zIndex: 2,
-  },
-  statusIndicator: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.background,
-  },
-  statusIndicatorCompleted: {
-    backgroundColor: COLORS.primary,
-  },
-  statusIndicatorActive: {
-    backgroundColor: COLORS.primary,
-  },
-  statusIndicatorLocked: {
-    backgroundColor: COLORS.backgroundCard,
-    borderColor: COLORS.border,
-  },
-  moduleCard: {
-    marginLeft: SPACING.xl + 8,
-    backgroundColor: COLORS.backgroundCard,
-    borderRadius: BORDER_RADIUS.lg,
-    padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    ...SHADOWS.card,
-  },
-  moduleCardActive: {
-    borderColor: COLORS.primary,
-    borderWidth: 2,
-  },
-  moduleCardLocked: {
-    borderStyle: 'dashed',
-    opacity: 0.7,
-  },
-  moduleHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  moduleNumber: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.medium,
-    color: COLORS.textMuted,
-    textTransform: 'uppercase',
-  },
-  moduleNumberActive: {
-    color: COLORS.primary,
-  },
-  moduleNumberLocked: {
-    color: COLORS.textMuted,
-  },
-  moduleStatusTag: {
-    fontSize: FONT_SIZES.xs,
-    fontFamily: FONTS.bold,
-    color: COLORS.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  moduleStatusTagCompleted: {
-    color: COLORS.textMuted,
-  },
-  moduleStatusTagActive: {
-    color: COLORS.primary,
-  },
-  moduleStatusTagLocked: {
-    color: COLORS.textMuted,
-  },
-  moduleTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.xs,
-  },
-  moduleDescription: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.regular,
-    color: COLORS.textSecondary,
-    lineHeight: 20,
-    marginBottom: SPACING.md,
-  },
-  resumeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: BORDER_RADIUS.md,
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-  },
-  resumeButtonText: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.bold,
-    color: COLORS.background,
-  },
-  viewButton: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    alignItems: 'center',
-    marginTop: SPACING.sm,
-  },
-  viewButtonText: {
-    fontSize: FONT_SIZES.sm,
-    fontFamily: FONTS.medium,
-    color: COLORS.textPrimary,
-  },
-});

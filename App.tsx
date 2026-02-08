@@ -4,24 +4,30 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withTiming, 
-  withRepeat, 
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
   withSequence,
+  withDelay,
   Easing,
-  interpolate
+  interpolate,
+  Extrapolation,
 } from 'react-native-reanimated';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AuthProvider } from './src/context/AuthContext';
+import { ThemeProvider, useTheme } from './src/context/ThemeContext';
+import { LanguageProvider } from './src/context/LanguageContext';
 import { TokenProvider } from './src/context/TokenContext';
 import { ProgressProvider } from './src/context/ProgressContext';
 import { BookmarksProvider } from './src/context/BookmarksContext';
+import { NotificationProvider } from './src/context/NotificationContext';
+import { VoiceProvider } from './src/context/VoiceContext';
 import { useLoadFonts } from './src/context/FontContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { AuthDeepLinkHandler } from './src/components/AuthDeepLinkHandler';
-import { COLORS, SPACING, FONTS, FONT_SIZES } from './src/constants/theme';
+import { SPACING, FONTS, FONT_SIZES } from './src/constants/theme';
 
 // Global error handler for unhandled promise rejections
 if (typeof global !== 'undefined') {
@@ -91,137 +97,173 @@ export default function App() {
     }
   }, []);
 
-  // Show splash immediately, even before fonts load - prevents white screen
-  if (!fontsLoaded || !appIsReady) {
-    return <SplashScreenComponent />;
-  }
-
   return (
-    <View style={styles.appWrapper}>
-      <ErrorBoundary>
-        <SafeAreaProvider>
-          <AuthProvider>
-            <AuthDeepLinkHandler />
-            <TokenProvider>
-              <ProgressProvider>
-                <BookmarksProvider>
-                  <StatusBar style="light" />
-                  <RootNavigator />
-                </BookmarksProvider>
-              </ProgressProvider>
-            </TokenProvider>
-          </AuthProvider>
-        </SafeAreaProvider>
-      </ErrorBoundary>
-    </View>
+    <ThemeProvider>
+      {!fontsLoaded || !appIsReady ? (
+        <SplashScreenComponent />
+      ) : (
+        <AppContent />
+      )}
+    </ThemeProvider>
   );
 }
 
-// Custom animated loading spinner component
-function AnimatedLoader() {
-  const rotation = useSharedValue(0);
-  
+function AppContent() {
+  const { colors, isDark } = useTheme();
+  return (
+    <View style={[styles.appWrapper, { backgroundColor: colors.background }]}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <ErrorBoundary>
+        <SafeAreaProvider>
+            <AuthProvider>
+              <LanguageProvider>
+                <AuthDeepLinkHandler />
+                <TokenProvider>
+                  <ProgressProvider>
+                    <BookmarksProvider>
+                      <VoiceProvider>
+                        <NotificationProvider>
+                          <RootNavigator />
+                        </NotificationProvider>
+                      </VoiceProvider>
+                    </BookmarksProvider>
+                  </ProgressProvider>
+                </TokenProvider>
+              </LanguageProvider>
+            </AuthProvider>
+          </SafeAreaProvider>
+        </ErrorBoundary>
+      </View>
+  );
+}
+
+// Animated progress bar for splash
+function SplashProgressBar({ colors }: { colors: { primary: string; background: string } }) {
+  const progress = useSharedValue(0);
+
   useEffect(() => {
-    rotation.value = withRepeat(
-      withTiming(360, {
-        duration: 1500,
-        easing: Easing.linear,
-      }),
+    progress.value = withRepeat(
+      withSequence(
+        withTiming(0.85, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
+        withTiming(0.3, { duration: 400 }),
+        withDelay(100, withTiming(0.85, { duration: 800 }))
+      ),
       -1,
       false
     );
   }, []);
-  
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ rotate: `${rotation.value}deg` }],
-    };
-  });
-  
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${interpolate(progress.value, [0, 1], [0, 100], Extrapolation.CLAMP)}%`,
+  }));
+
   return (
-    <Animated.View style={[styles.loaderContainer, animatedStyle]}>
-      <LinearGradient
-        colors={[COLORS.primary, COLORS.secondary, COLORS.primary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.loaderGradient}
-      />
-    </Animated.View>
+    <View style={[styles.progressTrack, { backgroundColor: colors.background + '40' }]}>
+      <Animated.View style={[styles.progressBar, { backgroundColor: colors.primary }, barStyle]} />
+    </View>
   );
 }
 
-// Splash screen component with animations
+// Splash screen component - modern cosmic design
 function SplashScreenComponent() {
+  const { colors, isDark } = useTheme();
   const logoOpacity = useSharedValue(0);
-  const logoScale = useSharedValue(0.8);
+  const logoScale = useSharedValue(0.85);
+  const logoGlow = useSharedValue(0.3);
   const taglineOpacity = useSharedValue(0);
   const brandNameOpacity = useSharedValue(0);
-  
+  const progressOpacity = useSharedValue(0);
+
   useEffect(() => {
-    // Logo animation: fade in + scale
-    logoOpacity.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.ease) });
-    logoScale.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.ease) });
-    
-    // Brand name animation: fade in after logo
-    setTimeout(() => {
-      brandNameOpacity.value = withTiming(1, { duration: 400 });
-    }, 300);
-    
-    // Tagline animation: fade in after brand name
-    setTimeout(() => {
-      taglineOpacity.value = withTiming(1, { duration: 400 });
-    }, 600);
+    logoOpacity.value = withTiming(1, { duration: 500, easing: Easing.out(Easing.cubic) });
+    logoScale.value = withTiming(1, { duration: 600, easing: Easing.out(Easing.back(1.2)) });
+    logoGlow.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: 1500 }),
+        withTiming(0.3, { duration: 1500 })
+      ),
+      -1,
+      true
+    );
+    brandNameOpacity.value = withDelay(200, withTiming(1, { duration: 400 }));
+    taglineOpacity.value = withDelay(400, withTiming(1, { duration: 500 }));
+    progressOpacity.value = withDelay(500, withTiming(1, { duration: 300 }));
   }, []);
-  
-  const logoAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: logoOpacity.value,
-      transform: [{ scale: logoScale.value }],
-    };
-  });
-  
-  const brandNameAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: brandNameOpacity.value,
-    };
-  });
-  
-  const taglineAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: taglineOpacity.value,
-    };
-  });
-  
+
+  const logoAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: logoOpacity.value,
+    transform: [{ scale: logoScale.value }],
+  }));
+
+  const glowAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: logoGlow.value,
+  }));
+
+  const brandNameAnimatedStyle = useAnimatedStyle(() => ({ opacity: brandNameOpacity.value }));
+  const taglineAnimatedStyle = useAnimatedStyle(() => ({ opacity: taglineOpacity.value }));
+  const progressAnimatedStyle = useAnimatedStyle(() => ({ opacity: progressOpacity.value }));
+
   return (
-    <LinearGradient
-      colors={[COLORS.background, '#0A0F1C', COLORS.background]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.container}
-    >
+    <View style={[styles.splashContainer, { backgroundColor: colors.background }]}>
       <StatusBar style="light" />
-      <View style={styles.content}>
-        <Animated.View style={[styles.logoContainer, logoAnimatedStyle]}>
-          <Image
-            source={require('./assets/codeverse-logo.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
-        
-        <Animated.View style={brandNameAnimatedStyle}>
-          <Text style={styles.brandName}>CodeVerse</Text>
-        </Animated.View>
-        
-        <Animated.View style={taglineAnimatedStyle}>
-          <Text style={styles.tagline}>Learn programming with AI</Text>
-        </Animated.View>
-        
-        <View style={styles.loaderWrapper}>
-          <AnimatedLoader />
-        </View>
+      {/* Cosmic background */}
+      <LinearGradient
+        colors={[
+          colors.background,
+          colors.backgroundElevated || colors.backgroundCard,
+          colors.background,
+        ]}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <LinearGradient
+        colors={[
+          colors.primary + '12',
+          'transparent',
+          colors.secondary + '08',
+        ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[StyleSheet.absoluteFill, { opacity: 1 }]}
+      />
+      {/* Subtle grid overlay */}
+      <View style={styles.gridOverlay} pointerEvents="none">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <View key={`h${i}`} style={[styles.gridLine, styles.gridLineH, { top: `${i * 25}%` }]} />
+        ))}
+        {[0, 1, 2, 3].map((i) => (
+          <View key={`v${i}`} style={[styles.gridLine, styles.gridLineV, { left: `${i * 33}%` }]} />
+        ))}
       </View>
-    </LinearGradient>
+
+      <View style={styles.splashContent}>
+        <Animated.View style={[styles.logoWrapper, logoAnimatedStyle]}>
+          <Animated.View style={[styles.logoGlow, { backgroundColor: colors.primary }, glowAnimatedStyle]} />
+          <View style={styles.logoInner}>
+            <Image
+              source={require('./assets/codeverse-logo.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+          </View>
+        </Animated.View>
+
+        <Animated.View style={[styles.brandWrap, brandNameAnimatedStyle]}>
+          <Text style={[styles.brandName, { color: colors.textPrimary }]}>CodeVerse</Text>
+        </Animated.View>
+
+        <Animated.View style={[styles.taglineWrap, taglineAnimatedStyle]}>
+          <Text style={[styles.tagline, { color: colors.textMuted }]}>
+            Learn programming with AI
+          </Text>
+        </Animated.View>
+
+        <Animated.View style={[styles.progressWrap, progressAnimatedStyle]}>
+          <SplashProgressBar colors={colors} />
+        </Animated.View>
+      </View>
+    </View>
   );
 }
 
@@ -230,59 +272,93 @@ const { width } = Dimensions.get('window');
 const styles = StyleSheet.create({
   appWrapper: {
     flex: 1,
-    backgroundColor: COLORS.background,
   },
-  container: {
+  splashContainer: {
     flex: 1,
+    overflow: 'hidden',
   },
-  content: {
+  gridOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.06,
+  },
+  gridLine: {
+    position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  gridLineH: {
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  gridLineV: {
+    top: 0,
+    bottom: 0,
+    width: 1,
+  },
+  splashContent: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACING.xl,
+    paddingBottom: 80,
   },
-  logoContainer: {
+  logoWrapper: {
+    position: 'relative',
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: SPACING.xl,
   },
+  logoGlow: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    opacity: 0.25,
+  },
+  logoInner: {
+    width: width * 0.45,
+    height: width * 0.45,
+    maxWidth: 200,
+    maxHeight: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   logoImage: {
-    width: width * 0.5,
-    height: width * 0.5,
-    maxWidth: 240,
-    maxHeight: 240,
+    width: '100%',
+    height: '100%',
+  },
+  brandWrap: {
+    marginBottom: SPACING.xs,
   },
   brandName: {
-    fontSize: FONT_SIZES.hero + 4,
+    fontSize: 36,
     fontFamily: FONTS.bold,
-    color: COLORS.textPrimary,
-    marginTop: SPACING.md,
-    marginBottom: SPACING.sm,
-    letterSpacing: -0.5,
+    letterSpacing: -1,
+  },
+  taglineWrap: {
+    marginBottom: SPACING.xxl,
   },
   tagline: {
     fontSize: FONT_SIZES.md,
     fontFamily: FONTS.regular,
-    color: COLORS.textMuted,
-    marginTop: SPACING.sm,
-    letterSpacing: 0.3,
+    letterSpacing: 0.5,
     textAlign: 'center',
   },
-  loaderWrapper: {
-    marginTop: SPACING.xxl,
+  progressWrap: {
+    position: 'absolute',
+    bottom: 48,
+    left: SPACING.xl,
+    right: SPACING.xl,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  loaderContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    overflow: 'hidden',
-    borderWidth: 4,
-    borderColor: COLORS.background,
-  },
-  loaderGradient: {
+  progressTrack: {
     width: '100%',
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBar: {
     height: '100%',
-    borderRadius: 25,
+    borderRadius: 2,
   },
 });

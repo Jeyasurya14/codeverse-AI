@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -6,7 +6,8 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
-import { COLORS, BORDER_RADIUS } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import { BORDER_RADIUS } from '../constants/theme';
 
 type SkeletonProps = {
   width?: number | string;
@@ -24,6 +25,7 @@ export function Skeleton({
   style,
   animated = true,
 }: SkeletonProps) {
+  const { colors } = useTheme();
   const opacity = useSharedValue(0.4);
 
   useEffect(() => {
@@ -40,10 +42,16 @@ export function Skeleton({
     opacity: opacity.value,
   }));
 
+  const skeletonStyles = useMemo(() => StyleSheet.create({
+    skeleton: {
+      backgroundColor: colors.backgroundElevated,
+    },
+  }), [colors]);
+
   return (
     <Animated.View
       style={[
-        styles.skeleton,
+        skeletonStyles.skeleton,
         {
           width,
           height,
@@ -56,21 +64,14 @@ export function Skeleton({
   );
 }
 
-const styles = StyleSheet.create({
-  skeleton: {
-    backgroundColor: COLORS.backgroundElevated,
-  },
-});
-
+/** Preset: stat card skeleton (icon + value + label) - requires SkeletonStatCardWrapper for theme */
 const cardStyles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: COLORS.backgroundCard,
     borderRadius: BORDER_RADIUS.lg,
     padding: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.borderLight,
     minHeight: 100,
     justifyContent: 'center',
   },
@@ -89,8 +90,15 @@ const cardStyles = StyleSheet.create({
 
 /** Preset: stat card skeleton (icon + value + label) */
 export function SkeletonStatCard() {
+  const { colors } = useTheme();
+  const themedCardStyles = useMemo(() => ({
+    ...cardStyles.card,
+    backgroundColor: colors.backgroundCard,
+    borderColor: colors.borderLight,
+  }), [colors]);
+
   return (
-    <View style={cardStyles.card}>
+    <View style={themedCardStyles}>
       <Skeleton width={36} height={36} style={cardStyles.icon} />
       <Skeleton width={32} height={20} style={cardStyles.value} />
       <Skeleton width={56} height={12} style={cardStyles.label} />

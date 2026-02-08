@@ -25,6 +25,16 @@ export const COLORS = {
   gradientSecondary: ['#F59E0B', '#D97706'] as [string, string],
   /** Alias for primary gradient (e.g. logo, one-off accent) */
   gradientAccent: ['#3B82F6', '#2563EB'] as [string, string],
+  
+  // Premium gradients for backgrounds
+  gradientDark: ['#0F172A', '#1E293B', '#0F172A'] as [string, string, string],
+  gradientPurple: ['#1E1B4B', '#312E81', '#1E1B4B'] as [string, string, string],
+  gradientCosmic: ['#0C1222', '#1A1A2E', '#16213E'] as [string, string, string],
+  
+  // Glass effect colors
+  glass: 'rgba(255, 255, 255, 0.05)',
+  glassBorder: 'rgba(255, 255, 255, 0.1)',
+  glassHighlight: 'rgba(255, 255, 255, 0.15)',
 
   // Text hierarchy - high contrast for visibility on dark backgrounds
   textPrimary: '#F8FAFC',
@@ -44,6 +54,59 @@ export const COLORS = {
   codeText: '#E8EEF4',
 
   // Status colors
+  success: '#10B981',
+  successMuted: 'rgba(16, 185, 129, 0.15)',
+  error: '#EF4444',
+  errorMuted: 'rgba(239, 68, 68, 0.15)',
+  warning: '#F59E0B',
+  warningMuted: 'rgba(245, 158, 11, 0.15)',
+  info: '#3B82F6',
+  infoMuted: 'rgba(59, 130, 246, 0.15)',
+} as const;
+
+/** Light theme colors - high contrast for light backgrounds */
+export const COLORS_LIGHT = {
+  primary: '#3B82F6',
+  primaryDark: '#2563EB',
+  primaryLight: '#60A5FA',
+  primaryMuted: 'rgba(59, 130, 246, 0.1)',
+
+  secondary: '#F59E0B',
+  secondaryDark: '#D97706',
+  secondaryLight: '#FBBF24',
+  secondaryMuted: 'rgba(245, 158, 11, 0.2)',
+
+  background: '#F8FAFC',
+  backgroundCard: '#FFFFFF',
+  backgroundElevated: '#F1F5F9',
+  backgroundAuth: '#F8FAFC',
+  backgroundOverlay: 'rgba(15, 23, 42, 0.5)',
+
+  gradientPrimary: ['#3B82F6', '#2563EB'] as [string, string],
+  gradientSecondary: ['#F59E0B', '#D97706'] as [string, string],
+  gradientAccent: ['#3B82F6', '#2563EB'] as [string, string],
+  gradientDark: ['#F1F5F9', '#E2E8F0', '#F1F5F9'] as [string, string, string],
+  gradientPurple: ['#EEF2FF', '#E0E7FF', '#EEF2FF'] as [string, string, string],
+  gradientCosmic: ['#F8FAFC', '#F1F5F9', '#E2E8F0'] as [string, string, string],
+
+  glass: 'rgba(255, 255, 255, 0.8)',
+  glassBorder: 'rgba(0, 0, 0, 0.06)',
+  glassHighlight: 'rgba(0, 0, 0, 0.04)',
+
+  textPrimary: '#1E293B',
+  textSecondary: '#475569',
+  textMuted: '#64748B',
+  textDisabled: '#94A3B8',
+
+  border: 'rgba(0, 0, 0, 0.08)',
+  borderLight: 'rgba(0, 0, 0, 0.04)',
+  borderFocus: 'rgba(59, 130, 246, 0.5)',
+  borderHover: 'rgba(0, 0, 0, 0.12)',
+
+  codeBackground: '#F1F5F9',
+  codeBorder: 'rgba(59, 130, 246, 0.2)',
+  codeText: '#1E293B',
+
   success: '#10B981',
   successMuted: 'rgba(16, 185, 129, 0.15)',
   error: '#EF4444',
@@ -91,13 +154,13 @@ export const LINE_HEIGHTS = {
 } as const;
 
 export const FONTS = {
-  primary: 'PlusJakartaSans_600SemiBold',
-  medium: 'PlusJakartaSans_500Medium',
-  regular: 'PlusJakartaSans_400Regular',
-  bold: 'PlusJakartaSans_700Bold',
-  /** Reading / article body — friendlier for long text */
-  reading: 'DMSans_400Regular',
-  readingMedium: 'DMSans_500Medium',
+  primary: 'Inter_600SemiBold',
+  medium: 'Inter_500Medium',
+  regular: 'Inter_400Regular',
+  bold: 'Inter_700Bold',
+  /** Reading / article body */
+  reading: 'Inter_400Regular',
+  readingMedium: 'Inter_500Medium',
 } as const;
 
 /** Professional shadows with depth */
@@ -128,16 +191,35 @@ export const SHADOWS = {
 /** Set to false when Razorpay (or other payment) is live. */
 export const PAYMENT_COMING_SOON = true;
 
+/** Region codes for country-based pricing */
+export type PricingRegion = 'IN' | 'US' | 'GB' | 'EU';
+
+export interface RechargePack {
+  id: string;
+  tokens: number;
+  label: string;
+  popular: boolean;
+  /** Prices by region: IN=INR, US=USD, GB=GBP, EU=EUR */
+  prices: Record<PricingRegion, number>;
+}
+
+export const REGION_CURRENCY: Record<PricingRegion, { symbol: string; code: string; name: string }> = {
+  IN: { symbol: '₹', code: 'INR', name: 'Indian Rupee' },
+  US: { symbol: '$', code: 'USD', name: 'US Dollar' },
+  GB: { symbol: '£', code: 'GBP', name: 'British Pound' },
+  EU: { symbol: '€', code: 'EUR', name: 'Euro' },
+};
+
 export const AI_TOKENS = {
   FREE_LIMIT: 300, // Match backend constant
   TOKENS_PER_MESSAGE: 10, // Fixed cost per AI message
   MIN_TOKENS_TO_SEND: 10, // Minimum tokens required to send a message
   RECHARGE_PACKS: [
-    { id: 'starter', tokens: 500, price: 0.99, priceInINR: 79, label: 'Starter', popular: false },
-    { id: 'learner', tokens: 1500, price: 2.99, priceInINR: 249, label: 'Learner', popular: true },
-    { id: 'pro', tokens: 5000, price: 7.99, priceInINR: 649, label: 'Pro', popular: false },
-    { id: 'unlimited', tokens: 15000, price: 14.99, priceInINR: 1249, label: 'Unlimited', popular: false },
-  ],
+    { id: 'starter', tokens: 500, label: 'Starter', popular: false, prices: { IN: 79, US: 0.99, GB: 0.79, EU: 0.99 } },
+    { id: 'learner', tokens: 1500, label: 'Learner', popular: true, prices: { IN: 249, US: 2.99, GB: 2.49, EU: 2.99 } },
+    { id: 'pro', tokens: 5000, label: 'Pro', popular: false, prices: { IN: 649, US: 7.99, GB: 6.49, EU: 7.99 } },
+    { id: 'unlimited', tokens: 15000, label: 'Unlimited', popular: false, prices: { IN: 1249, US: 14.99, GB: 11.99, EU: 14.99 } },
+  ] as RechargePack[],
 } as const;
 
 export const STORAGE_KEYS = {
@@ -152,4 +234,11 @@ export const STORAGE_KEYS = {
   COMPLETED_ARTICLES: '@codeverse/completed_articles',
   BOOKMARKS: '@codeverse/bookmarks',
   PENDING_OAUTH: '@codeverse/pending_oauth',
+  THEME: '@codeverse/theme',
+  LANGUAGE: '@codeverse/language',
+  NOTIFICATION_ENABLED: '@codeverse/notification_enabled',
+  NOTIFICATION_TIME: '@codeverse/notification_time',
+  VOICE_LANGUAGE: '@codeverse/voice_language',
+  VOICE_RATE: '@codeverse/voice_rate',
+  PRICING_REGION: '@codeverse/pricing_region',
 } as const;

@@ -5,6 +5,8 @@
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim() || '';
 const API_TIMEOUT_MS = 30000;
+const AUTH_TIMEOUT_MS = 10000; // Faster timeout for auth endpoints
+const AUTH_MAX_RETRIES = 2; // Retry auth requests on network issues
 
 import type { AuthTokens } from '../types';
 
@@ -226,38 +228,199 @@ export async function exchangeOAuthCode(
   );
 }
 
-// Email/Password Auth
+// Email/Password Auth - Optimized with retry logic
 export async function registerEmail(email: string, password: string, name?: string) {
-  return api<{ 
-    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; emailVerified?: boolean; subscriptionPlan?: string }; 
-    accessToken: string; 
-    refreshToken: string; 
-    expiresAt?: string;
-    tokenUsage?: { freeUsed: number; purchasedTotal: number; purchasedUsed: number };
-  }>(
-    '/auth/register',
-    {
-      method: 'POST',
-      body: JSON.stringify({ email, password, name }),
+  if (!BASE_URL) {
+    const error = new Error('App is not configured. Please update and restart.');
+    (error as any).status = 503;
+    throw error;
+  }
+
+  const url = `${BASE_URL.replace(/\/$/, '')}/auth/register`;
+  let lastError: Error | null = null;
+  let retryCount = 0;
+
+  while (retryCount <= AUTH_MAX_RETRIES) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, name }),
+      });
+      clearTimeout(timeout);
+
+      let data: any = {};
+      try {
+        const text = await res.text();
+        if (text) data = JSON.parse(text);
+      } catch {
+        // JSON parse failed
+      }
+
+      if (!res.ok) {
+        const msg = data?.message || res.statusText || 'Registration failed';
+        
+        // Retry on server errors only
+        if (res.status >= 500 && retryCount < AUTH_MAX_RETRIES) {
+          retryCount++;
+          await new Promise(r => setTimeout(r, 600 * retryCount));
+          continue;
+        }
+
+        const error = new Error(msg);
+        (error as any).status = res.status;
+        (error as any).response = data;
+        throw error;
+      }
+
+      return data as { 
+        user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; emailVerified?: boolean; subscriptionPlan?: string }; 
+        accessToken: string; 
+        refreshToken: string; 
+        expiresAt?: string;
+        tokenUsage?: { freeUsed: number; purchasedTotal: number; purchasedUsed: number };
+      };
+    } catch (e) {
+      clearTimeout(timeout);
+
+      if (e instanceof Error) {
+        if (e.name === 'AbortError') {
+          if (retryCount < AUTH_MAX_RETRIES) {
+            retryCount++;
+            lastError = new Error('Request timed out. Retrying...');
+            await new Promise(r => setTimeout(r, 300 * retryCount));
+            continue;
+          }
+          throw new Error('Registration timed out. Please check your connection and try again.');
+        }
+
+        if (e.message.includes('Network') || e.message.includes('fetch') || e.name === 'TypeError') {
+          if (retryCount < AUTH_MAX_RETRIES) {
+            retryCount++;
+            lastError = e;
+            await new Promise(r => setTimeout(r, 600 * retryCount));
+            continue;
+          }
+          throw new Error('Network error. Please check your connection and try again.');
+        }
+
+        throw e;
+      }
+
+      lastError = new Error(String(e));
+      if (retryCount < AUTH_MAX_RETRIES) {
+        retryCount++;
+        await new Promise(r => setTimeout(r, 600 * retryCount));
+        continue;
+      }
     }
-  );
+  }
+
+  throw lastError || new Error('Registration failed after multiple attempts. Please try again.');
 }
 
 export async function loginEmail(email: string, password: string, rememberMe = false, mfaCode?: string) {
-  return api<{ 
-    user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean; subscriptionPlan?: string }; 
-    accessToken: string; 
-    refreshToken: string; 
-    expiresAt?: string; 
-    requiresMfa?: boolean;
-    tokenUsage?: { freeUsed: number; purchasedTotal: number; purchasedUsed: number };
-  }>(
-    '/auth/login',
-    {
-      method: 'POST',
-      body: JSON.stringify({ email, password, rememberMe, mfaCode }),
+  // Optimized login with faster timeout, retry logic, and better error handling
+  if (!BASE_URL) {
+    const error = new Error('App is not configured. Please update and restart.');
+    (error as any).status = 503;
+    throw error;
+  }
+
+  const url = `${BASE_URL.replace(/\/$/, '')}/auth/login`;
+  let lastError: Error | null = null;
+  let retryCount = 0;
+
+  while (retryCount <= AUTH_MAX_RETRIES) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        signal: controller.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, rememberMe, mfaCode }),
+      });
+      clearTimeout(timeout);
+
+      // Read response
+      let data: any = {};
+      try {
+        const text = await res.text();
+        if (text) data = JSON.parse(text);
+      } catch {
+        // JSON parse failed
+      }
+
+      if (!res.ok) {
+        const msg = data?.message || res.statusText || 'Login failed';
+        
+        // Retry on server errors (5xx)
+        if (res.status >= 500 && retryCount < AUTH_MAX_RETRIES) {
+          retryCount++;
+          await new Promise(r => setTimeout(r, 600 * retryCount));
+          continue;
+        }
+
+        // Don't retry client errors - throw immediately
+        const error = new Error(msg);
+        (error as any).status = res.status;
+        (error as any).response = data;
+        throw error;
+      }
+
+      return data as { 
+        user: { id: string; email: string; name: string; avatar?: string; provider: 'email'; mfaEnabled?: boolean; subscriptionPlan?: string }; 
+        accessToken: string; 
+        refreshToken: string; 
+        expiresAt?: string; 
+        requiresMfa?: boolean;
+        tokenUsage?: { freeUsed: number; purchasedTotal: number; purchasedUsed: number };
+      };
+    } catch (e) {
+      clearTimeout(timeout);
+
+      if (e instanceof Error) {
+        // Timeout - retry
+        if (e.name === 'AbortError') {
+          if (retryCount < AUTH_MAX_RETRIES) {
+            retryCount++;
+            lastError = new Error('Request timed out. Retrying...');
+            await new Promise(r => setTimeout(r, 300 * retryCount));
+            continue;
+          }
+          throw new Error('Login timed out. Please check your connection and try again.');
+        }
+
+        // Network error - retry
+        if (e.message.includes('Network') || e.message.includes('fetch') || e.name === 'TypeError') {
+          if (retryCount < AUTH_MAX_RETRIES) {
+            retryCount++;
+            lastError = e;
+            await new Promise(r => setTimeout(r, 600 * retryCount));
+            continue;
+          }
+          throw new Error('Network error. Please check your connection and try again.');
+        }
+
+        throw e;
+      }
+      
+      lastError = new Error(String(e));
+      if (retryCount < AUTH_MAX_RETRIES) {
+        retryCount++;
+        await new Promise(r => setTimeout(r, 600 * retryCount));
+        continue;
+      }
     }
-  );
+  }
+
+  throw lastError || new Error('Login failed after multiple attempts. Please try again.');
 }
 
 export async function requestMagicLink(email: string, redirectUrl?: string) {
@@ -289,6 +452,34 @@ export async function logout(refreshToken?: string) {
       body: JSON.stringify({ refreshToken }),
     }
   );
+}
+
+export async function requestPasswordReset(email: string) {
+  return api<{ message: string }>('/auth/password/reset-request', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(token: string, newPassword: string) {
+  return api<{ message: string }>('/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify({ token, password: newPassword }),
+  });
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return api<{ message: string }>('/auth/password/change', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export async function deleteAccount(password: string) {
+  return api<{ message: string }>('/auth/account', {
+    method: 'DELETE',
+    body: JSON.stringify({ password, confirm: 'DELETE' }),
+  });
 }
 
 // Token Usage Management

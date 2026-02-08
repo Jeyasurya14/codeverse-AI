@@ -155,6 +155,28 @@ export const MOCK_LANGUAGES: ProgrammingLanguage[] = [
     topicCount: 5, 
     category: 'aiml' 
   },
+
+  // DevOps
+  {
+    id: '17',
+    name: 'DevOps',
+    slug: 'devops',
+    icon: SKILL_ICON('docker'),
+    description: 'CI/CD, containers & deployment',
+    topicCount: 10,
+    category: 'framework',
+  },
+
+  // ClawdBot
+  {
+    id: '18',
+    name: 'ClawdBot',
+    slug: 'clawdbot',
+    icon: SKILL_ICON('node'),
+    description: 'AI agent setup & messaging integrations',
+    topicCount: 11,
+    category: 'framework',
+  },
 ];
 
 const fallbackContent = `Content for this article is being prepared. Check back soon!
@@ -256,5 +278,32 @@ export const MOCK_ARTICLES: Record<string, Article[]> = {
     { id: '16-3', languageId: '16', title: 'Embeddings and Similarity', slug: 'embeddings', level: 'intermediate', content: getContent('16', 'embeddings'), readTimeMinutes: 9, order: 3 },
     { id: '16-4', languageId: '16', title: 'Best Practices and Prompting', slug: 'best-practices', level: 'intermediate', content: getContent('16', 'best-practices'), readTimeMinutes: 8, order: 4 },
     { id: '16-5', languageId: '16', title: 'Rate Limits and Error Handling', slug: 'rate-limits', level: 'advanced', content: getContent('16', 'rate-limits'), readTimeMinutes: 7, order: 5 },
+  ],
+
+  '17': [
+    { id: '17-1', languageId: '17', title: 'Linux Basics', slug: 'linux-basics', level: 'beginner', content: getContent('17', 'linux-basics'), readTimeMinutes: 12, order: 1 },
+    { id: '17-2', languageId: '17', title: 'Git and GitHub', slug: 'git-github', level: 'beginner', content: getContent('17', 'git-github'), readTimeMinutes: 14, order: 2 },
+    { id: '17-3', languageId: '17', title: 'Environment Management', slug: 'env-management', level: 'beginner', content: getContent('17', 'env-management'), readTimeMinutes: 10, order: 3 },
+    { id: '17-4', languageId: '17', title: 'Docker Basics', slug: 'docker-basics', level: 'intermediate', content: getContent('17', 'docker-basics'), readTimeMinutes: 15, order: 4 },
+    { id: '17-5', languageId: '17', title: 'Docker Compose', slug: 'docker-compose', level: 'intermediate', content: getContent('17', 'docker-compose'), readTimeMinutes: 12, order: 5 },
+    { id: '17-6', languageId: '17', title: 'CI + GitHub Actions', slug: 'ci-github-actions', level: 'intermediate', content: getContent('17', 'ci-github-actions'), readTimeMinutes: 14, order: 6 },
+    { id: '17-7', languageId: '17', title: 'ESLint and Prettier', slug: 'eslint-prettier', level: 'intermediate', content: getContent('17', 'eslint-prettier'), readTimeMinutes: 10, order: 7 },
+    { id: '17-8', languageId: '17', title: 'AWS Deployment', slug: 'aws-deployment', level: 'advanced', content: getContent('17', 'aws-deployment'), readTimeMinutes: 18, order: 8 },
+    { id: '17-9', languageId: '17', title: 'CI/CD Pipelines', slug: 'cicd', level: 'advanced', content: getContent('17', 'cicd'), readTimeMinutes: 16, order: 9 },
+    { id: '17-10', languageId: '17', title: 'Kubernetes', slug: 'kubernetes', level: 'advanced', content: getContent('17', 'kubernetes'), readTimeMinutes: 20, order: 10 },
+  ],
+
+  '18': [
+    { id: '18-1', languageId: '18', title: 'What is ClawdBot & Prerequisites', slug: 'intro-clawdbot', level: 'beginner', content: getContent('18', 'intro-clawdbot'), readTimeMinutes: 6, order: 1 },
+    { id: '18-2', languageId: '18', title: 'Installation on Windows', slug: 'install-windows', level: 'beginner', content: getContent('18', 'install-windows'), readTimeMinutes: 12, order: 2 },
+    { id: '18-3', languageId: '18', title: 'Installation on macOS', slug: 'install-mac', level: 'beginner', content: getContent('18', 'install-mac'), readTimeMinutes: 8, order: 3 },
+    { id: '18-4', languageId: '18', title: 'Installation on Linux', slug: 'install-linux', level: 'beginner', content: getContent('18', 'install-linux'), readTimeMinutes: 8, order: 4 },
+    { id: '18-5', languageId: '18', title: 'First Steps & Onboarding', slug: 'first-steps', level: 'beginner', content: getContent('18', 'first-steps'), readTimeMinutes: 10, order: 5 },
+    { id: '18-6', languageId: '18', title: 'WhatsApp Integration', slug: 'whatsapp-integration', level: 'intermediate', content: getContent('18', 'whatsapp-integration'), readTimeMinutes: 12, order: 6 },
+    { id: '18-7', languageId: '18', title: 'Telegram Integration', slug: 'telegram-integration', level: 'intermediate', content: getContent('18', 'telegram-integration'), readTimeMinutes: 12, order: 7 },
+    { id: '18-8', languageId: '18', title: 'Discord Integration', slug: 'discord-integration', level: 'intermediate', content: getContent('18', 'discord-integration'), readTimeMinutes: 12, order: 8 },
+    { id: '18-9', languageId: '18', title: 'Slack & Other Integrations', slug: 'slack-more', level: 'intermediate', content: getContent('18', 'slack-more'), readTimeMinutes: 10, order: 9 },
+    { id: '18-10', languageId: '18', title: 'Agent Integrations & Automation', slug: 'agent-automation', level: 'advanced', content: getContent('18', 'agent-automation'), readTimeMinutes: 15, order: 10 },
+    { id: '18-11', languageId: '18', title: 'Security & Troubleshooting', slug: 'security-troubleshooting', level: 'intermediate', content: getContent('18', 'security-troubleshooting'), readTimeMinutes: 12, order: 11 },
   ],
 };

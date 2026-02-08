@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { useTheme } from '../context/ThemeContext';
 import {
-  COLORS,
   FONTS,
   FONT_SIZES,
   SPACING,
@@ -11,9 +11,16 @@ import {
 
 type ArticleContentProps = { content: string };
 
-/** Parses simple markdown: **bold**, ```code```, - list, paragraphs */
-function parseContent(content: string): Array<{ type: 'paragraph' | 'code' | 'list'; content: string; lang?: string }> {
-  const blocks: Array<{ type: 'paragraph' | 'code' | 'list'; content: string; lang?: string }> = [];
+/** Parses simple markdown: **bold**, ```code```, # heading, - list, paragraphs */
+function parseContent(
+  content: string
+): Array<{ type: 'paragraph' | 'code' | 'list' | 'heading'; content: string; lang?: string; level?: number }> {
+  const blocks: Array<{
+    type: 'paragraph' | 'code' | 'list' | 'heading';
+    content: string;
+    lang?: string;
+    level?: number;
+  }> = [];
   let remaining = content.trim();
 
   // Split by code blocks first
@@ -50,13 +57,32 @@ function parseContent(content: string): Array<{ type: 'paragraph' | 'code' | 'li
 }
 
 function pushTextBlocks(
-  blocks: Array<{ type: 'paragraph' | 'code' | 'list'; content: string; lang?: string }>,
+  blocks: Array<{
+    type: 'paragraph' | 'code' | 'list' | 'heading';
+    content: string;
+    lang?: string;
+    level?: number;
+  }>,
   text: string
 ) {
-  const paragraphs = text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = text
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean);
   for (const p of paragraphs) {
     const lines = p.split('\n');
-    const isList = lines.length >= 1 && lines.every((l) => /^\s*-\s+/.test(l) || l.trim() === '');
+    const headingMatch = p.match(/^(#{1,3})\s+(.+)$/);
+    if (headingMatch) {
+      blocks.push({
+        type: 'heading',
+        content: headingMatch[2].trim(),
+        level: headingMatch[1].length,
+      });
+      continue;
+    }
+    const isList =
+      lines.length >= 1 &&
+      lines.every((l) => /^\s*-\s+/.test(l) || l.trim() === '');
     if (isList && lines.some((l) => /^\s*-\s+/.test(l))) {
       blocks.push({ type: 'list', content: p });
     } else {
@@ -88,21 +114,120 @@ function renderInlineText(str: string) {
 }
 
 export function ArticleContent({ content }: ArticleContentProps) {
+  const { colors } = useTheme();
   const blocks = parseContent(content);
+
+  const themedStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        paragraph: {
+          fontSize: FONT_SIZES.md,
+          fontFamily: FONTS.reading,
+          color: colors.textSecondary,
+          lineHeight: FONT_SIZES.md * LINE_HEIGHTS.relaxed,
+          marginBottom: SPACING.lg,
+          letterSpacing: 0.15,
+        },
+        bold: {
+          fontFamily: FONTS.readingMedium,
+          color: colors.textPrimary,
+        },
+        heading: {
+          fontSize: FONT_SIZES.lg,
+          fontFamily: FONTS.bold,
+          color: colors.textPrimary,
+          marginTop: SPACING.xl,
+          marginBottom: SPACING.md,
+          lineHeight: FONT_SIZES.lg * 1.3,
+          letterSpacing: -0.3,
+        },
+        heading2: {
+          fontSize: FONT_SIZES.md + 2,
+          marginTop: SPACING.lg,
+          marginBottom: SPACING.sm,
+        },
+        heading3: {
+          fontSize: FONT_SIZES.md,
+          marginTop: SPACING.md,
+          marginBottom: SPACING.xs,
+        },
+        codeWrap: {
+          marginBottom: SPACING.lg,
+          borderRadius: BORDER_RADIUS.lg,
+          overflow: 'hidden' as const,
+          borderWidth: 1,
+          borderColor: colors.codeBorder,
+          backgroundColor: colors.codeBackground,
+        },
+        codeLang: {
+          fontFamily: FONTS.semiBold,
+          fontSize: FONT_SIZES.xs,
+          color: colors.primary,
+          paddingHorizontal: SPACING.md,
+          paddingTop: SPACING.sm,
+          paddingBottom: SPACING.xs,
+          textTransform: 'uppercase' as const,
+          letterSpacing: 0.5,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        },
+        codeText: {
+          fontFamily: 'monospace',
+          fontSize: FONT_SIZES.sm,
+          color: colors.codeText,
+          lineHeight: FONT_SIZES.sm * 1.6,
+        },
+        bullet: {
+          fontSize: FONT_SIZES.md,
+          color: colors.primary,
+          marginRight: SPACING.sm,
+          fontWeight: '600' as const,
+        },
+        listItemText: {
+          flex: 1,
+          fontSize: FONT_SIZES.md,
+          fontFamily: FONTS.reading,
+          color: colors.textSecondary,
+          lineHeight: FONT_SIZES.md * LINE_HEIGHTS.relaxed,
+          letterSpacing: 0.15,
+        },
+        listItemBold: {
+          fontFamily: FONTS.readingMedium,
+          color: colors.textPrimary,
+        },
+      }),
+    [colors]
+  );
 
   return (
     <View style={styles.container}>
       {blocks.map((block, index) => {
         if (block.type === 'code') {
           return (
-            <View key={index} style={styles.codeWrap}>
+            <View key={index} style={themedStyles.codeWrap}>
               {block.lang ? (
-                <Text style={styles.codeLang}>{block.lang}</Text>
+                <Text style={themedStyles.codeLang}>{block.lang}</Text>
               ) : null}
               <View style={styles.codeBlock}>
-                <Text style={styles.codeText} selectable>{block.content}</Text>
+                <Text style={themedStyles.codeText} selectable>
+                  {block.content}
+                </Text>
               </View>
             </View>
+          );
+        }
+        if (block.type === 'heading') {
+          const level = block.level ?? 1;
+          const style =
+            level === 1
+              ? themedStyles.heading
+              : level === 2
+              ? [themedStyles.heading, themedStyles.heading2]
+              : [themedStyles.heading, themedStyles.heading3];
+          return (
+            <Text key={index} style={style}>
+              {block.content}
+            </Text>
           );
         }
         if (block.type === 'list') {
@@ -116,12 +241,14 @@ export function ArticleContent({ content }: ArticleContentProps) {
                 const inline = renderInlineText(item);
                 return (
                   <View key={i} style={styles.listItem}>
-                    <Text style={styles.bullet}>•</Text>
-                    <Text style={styles.listItemText}>
+                    <Text style={themedStyles.bullet}>•</Text>
+                    <Text style={themedStyles.listItemText}>
                       {inline.map((part, j) => (
                         <Text
                           key={j}
-                          style={part.bold ? styles.listItemBold : undefined}
+                          style={
+                            part.bold ? themedStyles.listItemBold : undefined
+                          }
                         >
                           {part.text}
                         </Text>
@@ -135,11 +262,11 @@ export function ArticleContent({ content }: ArticleContentProps) {
         }
         const inline = renderInlineText(block.content);
         return (
-          <Text key={index} style={styles.paragraph}>
+          <Text key={index} style={themedStyles.paragraph}>
             {inline.map((part, j) => (
               <Text
                 key={j}
-                style={part.bold ? styles.bold : undefined}
+                style={part.bold ? themedStyles.bold : undefined}
               >
                 {part.text}
               </Text>
@@ -155,44 +282,9 @@ const styles = StyleSheet.create({
   container: {
     paddingVertical: SPACING.sm,
   },
-  paragraph: {
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.reading,
-    color: COLORS.textSecondary,
-    lineHeight: FONT_SIZES.md * LINE_HEIGHTS.relaxed,
-    marginBottom: SPACING.lg,
-    letterSpacing: 0.2,
-  },
-  bold: {
-    fontFamily: FONTS.readingMedium,
-    color: COLORS.textPrimary,
-  },
-  codeWrap: {
-    marginBottom: SPACING.lg,
-    borderRadius: BORDER_RADIUS.md,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.codeBorder,
-    backgroundColor: COLORS.codeBackground,
-  },
-  codeLang: {
-    fontFamily: FONTS.medium,
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.xs,
-    textTransform: 'uppercase',
-  },
   codeBlock: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.md,
-  },
-  codeText: {
-    fontFamily: 'monospace',
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.codeText,
-    lineHeight: FONT_SIZES.sm * 1.5,
   },
   listWrap: {
     marginBottom: SPACING.lg,
@@ -201,24 +293,6 @@ const styles = StyleSheet.create({
   listItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: SPACING.sm,
-  },
-  bullet: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.primary,
-    marginRight: SPACING.sm,
-    fontFamily: FONTS.reading,
-  },
-  listItemText: {
-    flex: 1,
-    fontSize: FONT_SIZES.md,
-    fontFamily: FONTS.reading,
-    color: COLORS.textSecondary,
-    lineHeight: FONT_SIZES.md * LINE_HEIGHTS.relaxed,
-    letterSpacing: 0.2,
-  },
-  listItemBold: {
-    fontFamily: FONTS.readingMedium,
-    color: COLORS.textPrimary,
+    marginBottom: SPACING.md,
   },
 });

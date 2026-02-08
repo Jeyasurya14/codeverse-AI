@@ -4019,4 +4019,1367 @@ def with_retry(fn, max_retries=3):
 - **500**: Server error — retry with backoff.
 
 Check the response body for \`error.code\` and \`error.message\` for details.`,
+
+  // —— DevOps ——
+  '17-linux-basics': `# Linux Basics
+
+Linux is the dominant operating system for servers, cloud infrastructure, and DevOps workflows. Understanding Linux fundamentals is essential for any developer working in modern software delivery.
+
+## The Linux File System
+
+The Linux file system is hierarchical and starts from the root (\`/\`):
+
+- \`/home\` — User home directories
+- \`/etc\` — System configuration files
+- \`/var\` — Variable data (logs, caches)
+- \`/usr\` — User programs and binaries
+- \`/tmp\` — Temporary files
+- \`/opt\` — Optional/third-party software
+
+\`\`\`bash
+# Navigate and list
+cd /home
+ls -la
+pwd
+\`\`\`
+
+## Essential Commands
+
+### File and Directory Operations
+
+\`\`\`bash
+# Create, copy, move, remove
+mkdir myproject
+touch file.txt
+cp file.txt backup/
+mv file.txt renamed.txt
+rm file.txt
+rm -rf directory/
+\`\`\`
+
+### Viewing and Editing Files
+
+\`\`\`bash
+# View file contents
+cat file.txt
+head -20 file.txt
+tail -f log.txt   # Follow log in real time
+
+# Edit with nano or vim
+nano file.txt
+vim file.txt
+\`\`\`
+
+### Permissions and Ownership
+
+\`\`\`bash
+# View permissions (rwx for owner, group, others)
+ls -l file.txt
+
+# Change permissions (read=4, write=2, execute=1)
+chmod 755 script.sh
+chmod +x script.sh
+
+# Change ownership
+chown user:group file.txt
+\`\`\`
+
+## Pipes and Redirects
+
+\`\`\`bash
+# Pipe output to next command
+cat file.txt | grep "error"
+
+# Redirect output
+echo "hello" > output.txt   # Overwrite
+echo "more" >> output.txt   # Append
+
+# Redirect stderr
+command 2> error.log
+command 2>&1 | tee combined.log
+\`\`\`
+
+## Processes and System
+
+\`\`\`bash
+# List processes
+ps aux
+top
+htop
+
+# Kill process
+kill PID
+kill -9 PID   # Force kill
+
+# Run in background
+./long-task &
+nohup ./task &
+\`\`\`
+
+## Package Management
+
+\`\`\`bash
+# Ubuntu/Debian (apt)
+sudo apt update
+sudo apt install nginx
+sudo apt remove package
+
+# CentOS/RHEL (yum/dnf)
+sudo yum install nginx
+sudo dnf install nginx
+\`\`\`
+
+## Environment Variables
+
+\`\`\`bash
+# Set for current session
+export API_KEY=secret123
+echo $API_KEY
+
+# Set for a single command
+API_KEY=secret123 ./app
+\`\`\`
+
+Mastering these basics prepares you for scripting, server management, and container workflows.`,
+
+  '17-git-github': `# Git and GitHub
+
+Git is a distributed version control system. GitHub is a platform for hosting Git repositories and collaborating on code.
+
+## Git Fundamentals
+
+### Initialize and Clone
+
+\`\`\`bash
+# Start a new repo
+git init
+
+# Clone existing repo
+git clone https://github.com/user/repo.git
+\`\`\`
+
+### Basic Workflow
+
+\`\`\`bash
+# Stage changes
+git add file.txt
+git add .
+
+# Commit
+git commit -m "Add feature X"
+
+# Push to remote
+git push origin main
+\`\`\`
+
+### Branches
+
+\`\`\`bash
+# Create and switch
+git branch feature-x
+git checkout feature-x
+git checkout -b feature-x   # Create and switch
+
+# Merge
+git checkout main
+git merge feature-x
+\`\`\`
+
+## GitHub Workflow
+
+1. **Fork** a repo on GitHub to your account
+2. **Clone** your fork locally
+3. **Create a branch** for your changes
+4. **Commit and push** to your fork
+5. **Open a Pull Request** (PR) to the original repo
+6. **Review and merge** after approval
+
+\`\`\`bash
+# Add upstream for sync
+git remote add upstream https://github.com/original/repo.git
+git fetch upstream
+git merge upstream/main
+\`\`\`
+
+## Undo and Reset
+
+\`\`\`bash
+# Unstage
+git reset HEAD file.txt
+
+# Discard local changes
+git checkout -- file.txt
+
+# Reset last commit (keep changes)
+git reset --soft HEAD~1
+
+# Reset last commit (discard changes)
+git reset --hard HEAD~1
+\`\`\`
+
+## .gitignore
+
+\`\`\`gitignore
+# Dependencies
+node_modules/
+venv/
+
+# Environment
+.env
+.env.local
+
+# Build
+dist/
+build/
+\`\`\`
+
+Git and GitHub are the foundation of modern collaborative development.`,
+
+  '17-env-management': `# Environment Management
+
+Environment variables and configuration management keep secrets and environment-specific values out of code.
+
+## Why Environment Variables?
+
+- **Security**: API keys and passwords stay out of source control
+- **Flexibility**: Same code runs in dev, staging, and production
+- **Twelve-Factor App**: Config in the environment
+
+## Using Environment Variables
+
+### Shell (Linux/Mac)
+
+\`\`\`bash
+# Export for current session
+export DATABASE_URL=postgres://localhost/mydb
+export NODE_ENV=production
+
+# Load from file
+export $(cat .env | xargs)
+\`\`\`
+
+### .env Files
+
+\`\`\`env
+DATABASE_URL=postgres://localhost/mydb
+API_KEY=your-secret-key
+NODE_ENV=development
+\`\`\`
+
+**Important**: Add \`.env\` to \`.gitignore\`. Never commit secrets.
+
+### Loading .env in Applications
+
+\`\`\`javascript
+// Node.js with dotenv
+require('dotenv').config();
+const dbUrl = process.env.DATABASE_URL;
+\`\`\`
+
+\`\`\`python
+# Python with python-dotenv
+from dotenv import load_dotenv
+load_dotenv()
+import os
+db_url = os.getenv("DATABASE_URL")
+\`\`\`
+
+## Environment-Specific Config
+
+\`\`\`
+.env.development
+.env.staging
+.env.production
+\`\`\`
+
+Load the appropriate file based on \`NODE_ENV\` or \`APP_ENV\`.
+
+## Secret Management
+
+- **Local**: \`.env\` files (gitignored)
+- **CI/CD**: Secret variables in GitHub Actions, GitLab CI, etc.
+- **Cloud**: AWS Secrets Manager, HashiCorp Vault, Azure Key Vault
+
+Proper env management is critical for secure, portable deployments.`,
+
+  '17-docker-basics': `# Docker Basics
+
+Docker containerizes applications with their dependencies, ensuring "it works on my machine" becomes "it works everywhere."
+
+## Containers vs Virtual Machines
+
+- **VMs**: Full OS per instance, slower startup
+- **Containers**: Shared OS kernel, lightweight, fast startup
+
+## Core Concepts
+
+### Images
+
+An image is a read-only template. Built from a Dockerfile.
+
+\`\`\`bash
+# Pull an image
+docker pull nginx:alpine
+
+# List images
+docker images
+\`\`\`
+
+### Containers
+
+A container is a runnable instance of an image.
+
+\`\`\`bash
+# Run a container
+docker run -d -p 8080:80 --name web nginx:alpine
+
+# List running
+docker ps
+
+# Stop and remove
+docker stop web
+docker rm web
+\`\`\`
+
+## Writing a Dockerfile
+
+\`\`\`dockerfile
+FROM node:18-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+EXPOSE 3000
+CMD ["node", "index.js"]
+\`\`\`
+
+\`\`\`bash
+# Build
+docker build -t myapp:latest .
+
+# Run
+docker run -p 3000:3000 myapp:latest
+\`\`\`
+
+## Useful Commands
+
+\`\`\`bash
+docker logs container_id
+docker exec -it container_id sh
+docker cp file.txt container_id:/path/
+\`\`\`
+
+## Volumes
+
+Persist data outside the container:
+
+\`\`\`bash
+docker run -v /host/path:/container/path myimage
+docker volume create mydata
+docker run -v mydata:/data myimage
+\`\`\`
+
+Docker is the foundation for modern deployment and local development parity.`,
+
+  '17-docker-compose': `# Docker Compose
+
+Docker Compose orchestrates multi-container applications with a single \`docker-compose.yml\` file.
+
+## Basic Structure
+
+\`\`\`yaml
+version: '3.8'
+
+services:
+  web:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgres://db:5432/mydb
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: mydb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+\`\`\`
+
+## Key Concepts
+
+### Services
+
+Each service is a container. Define \`build\` or \`image\`, \`ports\`, \`environment\`, \`volumes\`, \`depends_on\`.
+
+### Networks
+
+By default, Compose creates a network. Services reach each other by service name (e.g., \`db\`).
+
+### Volumes
+
+Named volumes persist data across restarts. Bind mounts map host paths.
+
+\`\`\`yaml
+volumes:
+  - myvolume:/app/data      # Named volume
+  - ./local/path:/app/data   # Bind mount
+\`\`\`
+
+## Commands
+
+\`\`\`bash
+# Start all services
+docker-compose up -d
+
+# Stop
+docker-compose down
+
+# View logs
+docker-compose logs -f web
+
+# Rebuild
+docker-compose up -d --build
+\`\`\`
+
+## Environment Files
+
+\`\`\`yaml
+env_file:
+  - .env
+\`\`\`
+
+Compose simplifies running full stacks (app + db + cache) locally and in CI.`,
+
+  '17-ci-github-actions': `# CI + GitHub Actions
+
+Continuous Integration (CI) runs automated checks on every push or PR. GitHub Actions is GitHub's built-in CI/CD platform.
+
+## Workflow File
+
+Create \`.github/workflows/ci.yml\`:
+
+\`\`\`yaml
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+\`\`\`
+
+## Key Concepts
+
+### Triggers (\`on\`)
+
+- \`push\`: On push to branches
+- \`pull_request\`: On PRs
+- \`workflow_dispatch\`: Manual trigger
+
+### Jobs and Steps
+
+- **Job**: Runs on a runner (e.g., ubuntu-latest)
+- **Step**: Single unit (checkout, run, action)
+
+### Actions
+
+Reusable units from the Marketplace:
+
+\`\`\`yaml
+- uses: actions/checkout@v4
+- uses: actions/setup-node@v4
+  with:
+    node-version: '20'
+\`\`\`
+
+## Caching
+
+\`\`\`yaml
+- uses: actions/cache@v4
+  with:
+    path: node_modules
+    key: \${{ runner.os }}-npm-\${{ hashFiles('**/package-lock.json') }}
+\`\`\`
+
+## Secrets
+
+\`\`\`yaml
+env:
+  API_KEY: \${{ secrets.API_KEY }}
+\`\`\`
+
+Add secrets in repo Settings → Secrets and variables → Actions.`,
+
+  '17-eslint-prettier': `# ESLint and Prettier
+
+ESLint catches code quality issues. Prettier formats code consistently. Together they keep codebases clean and uniform.
+
+## ESLint
+
+### Setup
+
+\`\`\`bash
+npm init -y
+npm install -D eslint
+npx eslint --init
+\`\`\`
+
+### Configuration (\`.eslintrc.js\` or \`eslint.config.js\`)
+
+\`\`\`javascript
+module.exports = {
+  env: { node: true, es2022: true },
+  extends: ['eslint:recommended', 'plugin:@typescript-eslint/recommended'],
+  parser: '@typescript-eslint/parser',
+  plugins: ['@typescript-eslint'],
+  rules: {
+    'no-unused-vars': 'warn',
+    'no-console': 'off',
+  },
+};
+\`\`\`
+
+### Running
+
+\`\`\`bash
+npx eslint .
+npx eslint --fix .
+\`\`\`
+
+## Prettier
+
+### Setup
+
+\`\`\`bash
+npm install -D prettier
+\`\`\`
+
+### Configuration (\`.prettierrc\`)
+
+\`\`\`json
+{
+  "semi": true,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "trailingComma": "es5"
+}
+\`\`\`
+
+### Running
+
+\`\`\`bash
+npx prettier --write .
+npx prettier --check .
+\`\`\`
+
+## ESLint + Prettier Together
+
+\`\`\`bash
+npm install -D eslint-config-prettier eslint-plugin-prettier
+\`\`\`
+
+\`\`\`javascript
+// .eslintrc.js
+extends: ['eslint:recommended', 'plugin:prettier/recommended']
+\`\`\`
+
+\`eslint-config-prettier\` turns off ESLint rules that conflict with Prettier.`,
+
+  '17-aws-deployment': `# AWS Deployment
+
+Amazon Web Services provides scalable infrastructure for deploying applications.
+
+## Key Services
+
+### EC2
+
+Virtual servers. Full control over the OS.
+
+- Launch instance (AMI, instance type)
+- Security groups (firewall)
+- Elastic IP for static IP
+
+### Elastic Beanstalk
+
+Platform-as-a-Service. Upload code, EB handles scaling, load balancing, and deployment.
+
+\`\`\`bash
+eb init -p node.js my-app
+eb create production
+eb deploy
+\`\`\`
+
+### ECS (Elastic Container Service)
+
+Run Docker containers. Use Fargate for serverless containers (no EC2 to manage).
+
+### Lambda
+
+Serverless functions. Pay per invocation. Great for APIs and event-driven workloads.
+
+### S3 + CloudFront
+
+Static hosting. Upload build artifacts to S3, serve via CloudFront CDN.
+
+\`\`\`bash
+aws s3 sync dist/ s3://my-bucket --delete
+aws cloudfront create-invalidation --distribution-id XXX --paths "/*"
+\`\`\`
+
+### RDS
+
+Managed databases (PostgreSQL, MySQL, etc.). Automated backups, multi-AZ for HA.
+
+## IAM and Security
+
+- Use IAM roles for EC2/ECS/Lambda instead of access keys
+- Principle of least privilege
+- Enable MFA for root and admin users
+
+## Cost Optimization
+
+- Use Reserved Instances or Savings Plans for steady workloads
+- Scale down dev/staging when not in use
+- Monitor with Cost Explorer and budgets`,
+
+  '17-cicd': `# CI/CD Pipelines
+
+CI/CD (Continuous Integration / Continuous Delivery) automates building, testing, and deploying software.
+
+## Pipeline Stages
+
+1. **Build**: Compile, install dependencies
+2. **Test**: Unit, integration, e2e
+3. **Security**: SAST, dependency scanning
+4. **Deploy**: To staging, then production
+
+## Example: GitHub Actions Full Pipeline
+
+\`\`\`yaml
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  deploy:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to AWS
+        run: |
+          # Deploy script (e.g., EB, S3, ECS)
+          echo "Deploying..."
+\`\`\`
+
+## Strategies
+
+- **Blue-Green**: Two identical environments, switch traffic
+- **Canary**: Gradually shift traffic to new version
+- **Rolling**: Replace instances incrementally
+
+## Best Practices
+
+- Automated tests must pass before deploy
+- Use feature flags for gradual rollout
+- Rollback plan and runbooks
+- Audit logging for deployments`,
+
+  '17-kubernetes': `# Kubernetes
+
+Kubernetes (K8s) orchestrates containers at scale. It manages deployment, scaling, load balancing, and self-healing.
+
+## Core Concepts
+
+### Pod
+
+The smallest deployable unit. Usually one container per pod; can run multiple co-located containers.
+
+\`\`\`yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app
+spec:
+  containers:
+    - name: app
+      image: myapp:latest
+      ports:
+        - containerPort: 3000
+\`\`\`
+
+### Deployment
+
+Manages ReplicaSets and rolling updates. Declares desired state.
+
+\`\`\`yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: app
+          image: myapp:latest
+          ports:
+            - containerPort: 3000
+\`\`\`
+
+### Service
+
+Exposes pods via a stable network endpoint. Types: ClusterIP, NodePort, LoadBalancer.
+
+\`\`\`yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: LoadBalancer
+\`\`\`
+
+### Ingress
+
+HTTP routing to services. One load balancer for multiple services.
+
+## Essential Commands
+
+\`\`\`bash
+kubectl apply -f deployment.yaml
+kubectl get pods
+kubectl logs pod-name
+kubectl exec -it pod-name -- sh
+kubectl scale deployment my-app --replicas=5
+\`\`\`
+
+## Helm
+
+Package manager for Kubernetes. Charts templatize manifests for reuse.
+
+\`\`\`bash
+helm install myapp ./mychart
+helm upgrade myapp ./mychart
+\`\`\`
+
+Kubernetes is the standard for running containerized workloads in production.`,
+
+  // —— ClawdBot ——
+  '18-intro-clawdbot': `# What is ClawdBot & Prerequisites
+
+**Stop asking AI questions. Start telling it to do things.**
+
+ClawdBot is your personal AI assistant that actually takes action. Tell it to clear your inbox, draft emails, manage your calendar, check you in for flights — all from WhatsApp, Telegram, Discord, or any chat app you already use.
+
+It runs 24/7 on your computer, remembers everything you tell it, and gets smarter the more you interact with it.
+
+## Why ClawdBot?
+
+- **It actually does things** — sends emails, manages tasks, takes notes, runs searches. Not just a chatbot.
+- **Perfect memory** — remembers context 24/7.
+- **Always available** — accessible from any messaging app.
+- **Your data stays yours** — runs locally, not in the cloud.
+
+## Prerequisites Checklist
+
+| Requirement | Details |
+|-------------|---------|
+| Node.js | Version 22 or higher |
+| OS | macOS, Linux, or Windows (WSL2) |
+| AI Model | Anthropic Claude or OpenAI API key |
+| Messaging | WhatsApp, Telegram, or Discord account |
+
+## Check Node.js Version
+
+\`\`\`bash
+node --version
+\`\`\`
+
+Should show **v22** or higher. If not, download from [nodejs.org](https://nodejs.org).
+
+## Get an API Key
+
+- **Anthropic (Claude)**: [console.anthropic.com](https://console.anthropic.com/)
+- **OpenAI**: [platform.openai.com](https://platform.openai.com/)`,
+
+  '18-install-windows': `# Installation on Windows
+
+**Windows users: WSL2 is required.** Native Windows is not supported.
+
+## Step 1: Install WSL2
+
+1. Open PowerShell as Administrator and run:
+
+\`\`\`powershell
+wsl --install
+\`\`\`
+
+2. Restart your computer when prompted.
+3. Complete Ubuntu setup (create username and password).
+
+## Step 2: Install Node.js in WSL
+
+\`\`\`bash
+# Update package list
+sudo apt update
+
+# Install Node.js 22
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Verify
+node --version
+\`\`\`
+
+## Step 3: Install ClawdBot
+
+\`\`\`bash
+curl -fsSL https://clawd.bot/install.sh | bash
+\`\`\`
+
+Or via npm:
+
+\`\`\`bash
+npm install -g clawdbot@latest
+\`\`\`
+
+## Step 4: Verify Installation
+
+\`\`\`bash
+clawdbot --version
+\`\`\`
+
+You should see a version like \`2026.1.23\`.
+
+## Linux systemd on WSL
+
+If enabling lingering for background service:
+
+\`\`\`bash
+sudo loginctl enable-linger $USER
+\`\`\``,
+
+  '18-install-mac': `# Installation on macOS
+
+## Method 1: Installer Script (Recommended)
+
+\`\`\`bash
+curl -fsSL https://clawd.bot/install.sh | bash
+\`\`\`
+
+This downloads the CLI, installs globally, and adds it to your PATH.
+
+## Method 2: npm
+
+\`\`\`bash
+npm install -g clawdbot@latest
+\`\`\`
+
+## Method 3: pnpm
+
+\`\`\`bash
+pnpm add -g clawdbot@latest
+\`\`\`
+
+## Verify Installation
+
+\`\`\`bash
+clawdbot --version
+\`\`\`
+
+Expected: version like \`2026.1.23\`.
+
+## Works on Intel and Apple Silicon
+
+ClawdBot supports both Intel Macs and Apple Silicon (M1/M2/M3).`,
+
+  '18-install-linux': `# Installation on Linux
+
+## Method 1: Installer Script (Recommended)
+
+\`\`\`bash
+curl -fsSL https://clawd.bot/install.sh | bash
+\`\`\`
+
+## Update PATH (Debian/Ubuntu)
+
+\`\`\`bash
+export PATH="$HOME/.local/bin:$PATH"
+\`\`\`
+
+Add to \`~/.bashrc\` or \`~/.zshrc\` for persistence:
+
+\`\`\`bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+\`\`\`
+
+## Method 2: npm
+
+\`\`\`bash
+npm install -g clawdbot@latest
+\`\`\`
+
+## Method 3: pnpm
+
+\`\`\`bash
+pnpm add -g clawdbot@latest
+\`\`\`
+
+## Verify
+
+\`\`\`bash
+clawdbot --version
+\`\`\`
+
+## Enable Lingering (Background Service)
+
+For systemd user service to run after logout:
+
+\`\`\`bash
+sudo loginctl enable-linger $USER
+\`\`\``,
+
+  '18-first-steps': `# First Steps & Onboarding
+
+## Run the Onboarding Wizard
+
+\`\`\`bash
+clawdbot onboard --install-daemon
+\`\`\`
+
+## What You'll Configure
+
+### 1. AI Model & Authentication
+
+Choose your provider:
+- **Anthropic (Claude)** — API key from [console.anthropic.com](https://console.anthropic.com/)
+- **OpenAI** — API key from [platform.openai.com](https://platform.openai.com/)
+
+### 2. Messaging Providers
+
+Select which to connect:
+- WhatsApp — QR code scan
+- Telegram — bot token
+- Discord — bot token
+
+### 3. Gateway
+
+- **Local** (recommended) — runs on port 18789
+- **Remote** — for VPS/server
+
+### 4. Background Service
+
+- **macOS** — launchd (starts on login)
+- **Linux/WSL** — systemd (starts at boot)
+
+## After Onboarding
+
+Gateway starts automatically. Proceed to pair your first channel.
+
+## Check Status
+
+\`\`\`bash
+clawdbot gateway status
+clawdbot health
+\`\`\``,
+
+  '18-whatsapp-integration': `# WhatsApp Integration
+
+**Easiest option:** QR code scan. No bot token needed.
+
+## Step 1: Pair WhatsApp
+
+\`\`\`bash
+clawdbot channels login
+\`\`\`
+
+A QR code appears in your terminal.
+
+## Step 2: Scan on Phone
+
+1. Open WhatsApp on your phone
+2. Go to **Settings** → **Linked Devices**
+3. Tap **Link a Device**
+4. Scan the QR code in the terminal
+
+## Step 3: Wait for Confirmation
+
+Terminal shows: **"WhatsApp session established"**
+
+## Test
+
+Send a message to your ClawdBot: **"Hello ClawdBot!"**
+
+## Troubleshooting
+
+- **QR won't scan?** Enlarge terminal window or screenshot the QR.
+- **Invalid QR?** Ensure you're in Linked Devices, not regular scan.
+- **Expired?** QR codes expire ~30 seconds. Run \`clawdbot channels login\` again.
+
+## Useful Commands
+
+\`\`\`bash
+clawdbot channels login    # Re-pair if needed
+clawdbot gateway status    # Check connection
+clawdbot health            # Full health check
+\`\`\``,
+
+  '18-telegram-integration': `# Telegram Integration
+
+Requires a Telegram bot token. More setup than WhatsApp, but reliable.
+
+## Step 1: Create Telegram Bot
+
+1. Open Telegram and search for **@BotFather**
+2. Send: \`/start\`
+3. Send: \`/newbot\`
+4. Follow prompts (e.g., name: "MyClawd")
+5. Copy the bot token (format: \`123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11\`)
+
+## Step 2: Configure ClawdBot
+
+\`\`\`bash
+clawdbot configure
+\`\`\`
+
+Add your bot token when prompted. Or edit config manually:
+
+\`\`\`json
+{
+  "channels": {
+    "telegram": {
+      "token": "YOUR_BOT_TOKEN"
+    }
+  }
+}
+\`\`\`
+
+## Step 3: Test the Bot
+
+1. Search for your bot in Telegram (the name you gave it)
+2. Send: **"Hello!"**
+3. Bot replies with a pairing code
+
+## Step 4: Approve Pairing
+
+\`\`\`bash
+clawdbot pairing approve telegram <code>
+\`\`\`
+
+Replace \`<code>\` with the code from the bot.
+
+## Verify
+
+\`\`\`bash
+clawdbot pairing list telegram
+clawdbot gateway status
+\`\`\`
+
+## Commands Reference
+
+\`\`\`bash
+clawdbot configure                      # Add/edit config
+clawdbot pairing list telegram          # List pending pairings
+clawdbot pairing approve telegram <code> # Approve pairing
+clawdbot gateway restart                # Restart gateway
+\`\`\``,
+
+  '18-discord-integration': `# Discord Integration
+
+Requires a Discord bot token and server setup.
+
+## Step 1: Create Discord Bot
+
+1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
+2. Click **New Application**
+3. Name it (e.g., "MyClawdBot")
+4. Go to **Bot** → **Add Bot**
+5. Copy the token under **TOKEN** (click "Reset Token" if needed)
+
+## Step 2: Generate OAuth Invite URL
+
+1. Go to **OAuth2** → **URL Generator**
+2. Scopes: select \`bot\`
+3. Permissions: **Send Messages**, **Read Message History**, **Read Messages/View Channels**
+4. Copy the generated URL
+
+## Step 3: Invite Bot to Server
+
+1. Open the OAuth URL in your browser
+2. Select your Discord server
+3. Click **Authorize**
+
+## Step 4: Configure ClawdBot
+
+\`\`\`bash
+clawdbot configure
+\`\`\`
+
+Add your Discord bot token. Or edit config:
+
+\`\`\`json
+{
+  "channels": {
+    "discord": {
+      "token": "YOUR_DISCORD_BOT_TOKEN"
+    }
+  }
+}
+\`\`\`
+
+## Step 5: Restart Gateway
+
+\`\`\`bash
+clawdbot gateway restart
+\`\`\`
+
+## Test
+
+Send a message to your bot in Discord. Bot should respond.
+
+## Commands
+
+\`\`\`bash
+clawdbot configure          # Add Discord token
+clawdbot gateway restart    # Apply config
+clawdbot gateway status     # Verify connection
+\`\`\``,
+
+  '18-slack-more': `# Slack & Other Integrations
+
+ClawdBot supports additional messaging platforms.
+
+## Slack Setup
+
+1. Create a Slack app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Add **Bot** scope and permissions:
+   - \`chat:write\`
+   - \`channels:history\`, \`groups:history\`, \`im:history\`
+3. Install app to workspace
+4. Copy **Bot User OAuth Token** (starts with \`xoxb-\`)
+5. Configure ClawdBot:
+
+\`\`\`bash
+clawdbot configure
+\`\`\`
+
+Add Slack token to config.
+
+## iMessage (macOS Only)
+
+- Requires native macOS integration
+- Set during onboarding
+- Limited to Apple ecosystem
+
+## Config File Location
+
+\`\`\`
+~/.clawdbot/config.json
+\`\`\`
+
+Or OpenClaw:
+
+\`\`\`
+~/.openclaw/openclaw.json
+\`\`\`
+
+## Add Multiple Channels
+
+You can connect WhatsApp, Telegram, Discord, and Slack simultaneously. Each channel is independent.
+
+## Useful Commands
+
+\`\`\`bash
+clawdbot configure          # Add/edit channel configs
+clawdbot gateway status     # See all connected channels
+clawdbot channels login     # Re-pair WhatsApp
+\`\`\``,
+
+  '18-agent-automation': `# Agent Integrations & Automation Guide
+
+ClawdBot can run agents, skills, and automations across your messaging channels.
+
+## Activation Modes
+
+\`\`\`
+/activation always   # Always respond to messages
+/activation manual   # Respond only when mentioned or commanded
+\`\`\`
+
+## Available Commands (in chat)
+
+\`\`\`
+/skills              # List available skills
+/help                # Show commands
+/activation always   # Always respond
+/activation manual   # Manual mode
+\`\`\`
+
+## Gateway Management
+
+\`\`\`bash
+clawdbot gateway status     # Check status
+clawdbot gateway restart    # Restart gateway
+clawdbot gateway --port 18789 --verbose   # Run with debug
+clawdbot health             # Full health check
+\`\`\`
+
+## Dashboard
+
+Open in browser:
+
+\`\`\`
+http://127.0.0.1:18789/
+\`\`\`
+
+View status, manage agents, and monitor activity.
+
+## Workspace & Config
+
+- **Config**: \`~/.openclaw/openclaw.json\`
+- **Workspace**: \`~/.openclaw/workspace\` (skills, prompts, memories)
+
+Keep customization in these paths so updates don't overwrite them.
+
+## Automation Ideas
+
+- Auto-reply to common questions
+- Draft emails from chat
+- Manage calendar from WhatsApp
+- Search the web on demand
+- Run reminders and recurring tasks
+
+## Skills
+
+Add skills for web search, calendar, email, etc. Check docs for available skills:
+
+\`\`\`
+docs.clawd.bot
+\`\`\``,
+
+  '18-security-troubleshooting': `# Security & Troubleshooting
+
+## Security Checklist
+
+- Keep API keys private — never share or commit
+- Enable gateway authentication on VPS
+- Don't expose port 18789 to the internet
+- Use strong, unique passwords
+- Regenerate tokens if exposed
+
+## Common Issues
+
+### Onboarding Crashes
+
+\`\`\`bash
+clawdbot onboard --verbose
+\`\`\`
+
+Causes: Node.js < 22, corrupted config. Delete \`~/.clawdbot/config.json\` and retry.
+
+### WhatsApp QR Won't Scan
+
+- Use **Linked Devices** (not regular scan)
+- Enlarge terminal or screenshot QR
+- QR expires ~30s; run \`clawdbot channels login\` again
+
+### Telegram Bot Doesn't Respond
+
+\`\`\`bash
+clawdbot pairing approve telegram <code>
+clawdbot gateway restart
+\`\`\`
+
+### "Auth not configured"
+
+\`\`\`bash
+clawdbot onboard
+# or
+clawdbot configure --section auth
+\`\`\`
+
+### Port 18789 in Use
+
+\`\`\`bash
+lsof -i :18789
+kill -9 <pid>
+# or
+clawdbot gateway --port 18790
+\`\`\`
+
+### View Logs
+
+\`\`\`bash
+clawdbot gateway --verbose
+\`\`\`
+
+macOS (launchd):
+
+\`\`\`bash
+log stream --predicate 'process == "clawdbot"' --level debug
+\`\`\`
+
+Linux (systemd):
+
+\`\`\`bash
+journalctl -u clawdbot-gateway -f
+\`\`\`
+
+## VPS Security Warning
+
+If running on a VPS, never expose gateway ports without authentication. Enable auth and use firewalls.`,
 };
