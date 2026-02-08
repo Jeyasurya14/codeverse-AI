@@ -40,12 +40,14 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
           setPurchasedTotal(backendUsage.purchasedTotal);
           setPurchasedUsed(backendUsage.purchasedUsed);
           
-          // Update local storage to match backend
+          // Update local storage to match backend (user-scoped when logged in)
+          const tokensKey = user.id ? `${STORAGE_KEYS.TOKENS_USED}:${user.id}` : STORAGE_KEYS.TOKENS_USED;
+          const purchasedKey = user.id ? `${STORAGE_KEYS.TOKENS_PURCHASED}:${user.id}` : STORAGE_KEYS.TOKENS_PURCHASED;
           await AsyncStorage.setItem(
-            STORAGE_KEYS.TOKENS_USED,
+            tokensKey,
             JSON.stringify({ free: backendUsage.freeUsed, purchased: backendUsage.purchasedUsed })
           );
-          await AsyncStorage.setItem(STORAGE_KEYS.TOKENS_PURCHASED, String(backendUsage.purchasedTotal));
+          await AsyncStorage.setItem(purchasedKey, String(backendUsage.purchasedTotal));
           return;
         } catch (e) {
           // Only warn if it's not an expected error (missing auth, network issues, 404 when not authenticated)
@@ -75,17 +77,23 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
-      // Fallback to local storage if not logged in or backend fails
+      // Fallback to local storage if not logged in or backend fails (user-scoped when logged in)
+      const tokensKey = user?.id ? `${STORAGE_KEYS.TOKENS_USED}:${user.id}` : STORAGE_KEYS.TOKENS_USED;
+      const purchasedKey = user?.id ? `${STORAGE_KEYS.TOKENS_PURCHASED}:${user.id}` : STORAGE_KEYS.TOKENS_PURCHASED;
       const [used, purchased] = await Promise.all([
-        AsyncStorage.getItem(STORAGE_KEYS.TOKENS_USED),
-        AsyncStorage.getItem(STORAGE_KEYS.TOKENS_PURCHASED),
+        AsyncStorage.getItem(tokensKey),
+        AsyncStorage.getItem(purchasedKey),
       ]);
       if (used) {
         const parsed = JSON.parse(used);
         setFreeUsed(parsed.free ?? 0);
         setPurchasedUsed(parsed.purchased ?? 0);
+      } else {
+        setFreeUsed(0);
+        setPurchasedUsed(0);
       }
       if (purchased) setPurchasedTotal(parseInt(purchased, 10));
+      else setPurchasedTotal(0);
     } catch (e) {
       __DEV__ && console.warn('Token load failed', e);
     }
@@ -141,8 +149,9 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
 
     setFreeUsed(newFreeUsed);
     setPurchasedUsed(newPurchasedUsed);
+    const tokensKey = user?.id ? `${STORAGE_KEYS.TOKENS_USED}:${user.id}` : STORAGE_KEYS.TOKENS_USED;
     AsyncStorage.setItem(
-      STORAGE_KEYS.TOKENS_USED,
+      tokensKey,
       JSON.stringify({ free: newFreeUsed, purchased: newPurchasedUsed })
     ).catch(() => {});
     
@@ -155,7 +164,8 @@ export function TokenProvider({ children }: { children: React.ReactNode }) {
   const addPurchasedTokens = async (count: number) => {
     const newTotal = purchasedTotal + count;
     setPurchasedTotal(newTotal);
-    await AsyncStorage.setItem(STORAGE_KEYS.TOKENS_PURCHASED, String(newTotal));
+    const purchasedKey = user?.id ? `${STORAGE_KEYS.TOKENS_PURCHASED}:${user.id}` : STORAGE_KEYS.TOKENS_PURCHASED;
+    await AsyncStorage.setItem(purchasedKey, String(newTotal));
     
     // Sync to backend
     await syncToBackend(freeUsed, newTotal, purchasedUsed);

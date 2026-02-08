@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/theme';
+import { useAuth } from './AuthContext';
 
 export type LastReadArticle = {
   languageId: string;
@@ -41,7 +42,16 @@ function migrateToCompletedArticles(raw: unknown): CompletedArticle[] {
   return [];
 }
 
+function getProgressKeys(userId: string | null) {
+  const suffix = userId ?? 'guest';
+  return {
+    lastRead: `${STORAGE_KEYS.LAST_READ_ARTICLE}:${suffix}`,
+    completedArticles: `${STORAGE_KEYS.COMPLETED_ARTICLES}:${suffix}`,
+  };
+}
+
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [lastRead, setLastReadState] = useState<LastReadArticle | null>(null);
   const [completedArticles, setCompletedArticles] = useState<CompletedArticle[]>([]);
 
@@ -50,12 +60,14 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     [completedArticles]
   );
 
+  const keys = useMemo(() => getProgressKeys(user?.id ?? null), [user?.id]);
+
   useEffect(() => {
     (async () => {
       try {
         const [lastRaw, completedRaw] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_KEYS.LAST_READ_ARTICLE),
-          AsyncStorage.getItem(STORAGE_KEYS.COMPLETED_ARTICLES),
+          AsyncStorage.getItem(keys.lastRead),
+          AsyncStorage.getItem(keys.completedArticles),
         ]);
         if (lastRaw) setLastReadState(JSON.parse(lastRaw));
         if (completedRaw) {
@@ -63,34 +75,42 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
           const migrated = migrateToCompletedArticles(parsed);
           setCompletedArticles(migrated);
           if (isLegacyFormat(parsed) && migrated.length > 0) {
-            await AsyncStorage.setItem(STORAGE_KEYS.COMPLETED_ARTICLES, JSON.stringify(migrated));
+            await AsyncStorage.setItem(keys.completedArticles, JSON.stringify(migrated));
           }
+        } else {
+          setCompletedArticles([]);
         }
       } catch (e) {
         __DEV__ && console.warn('Progress load failed', e);
       }
     })();
-  }, []);
+  }, [keys.lastRead, keys.completedArticles]);
 
-  const setLastRead = useCallback(async (article: LastReadArticle) => {
-    setLastReadState(article);
-    await AsyncStorage.setItem(STORAGE_KEYS.LAST_READ_ARTICLE, JSON.stringify(article));
-  }, []);
+  const setLastRead = useCallback(
+    async (article: LastReadArticle) => {
+      setLastReadState(article);
+      await AsyncStorage.setItem(keys.lastRead, JSON.stringify(article));
+    },
+    [keys.lastRead]
+  );
 
   const clearLastRead = useCallback(async () => {
     setLastReadState(null);
-    await AsyncStorage.removeItem(STORAGE_KEYS.LAST_READ_ARTICLE);
-  }, []);
+    await AsyncStorage.removeItem(keys.lastRead);
+  }, [keys.lastRead]);
 
-  const markArticleRead = useCallback(async (_languageId: string, articleId: string) => {
-    setCompletedArticles((prev) => {
-      if (prev.some((c) => c.articleId === articleId)) return prev;
-      const entry: CompletedArticle = { articleId, completedAt: new Date().toISOString() };
-      const next = [...prev, entry];
-      AsyncStorage.setItem(STORAGE_KEYS.COMPLETED_ARTICLES, JSON.stringify(next)).catch(() => {});
-      return next;
-    });
-  }, []);
+  const markArticleRead = useCallback(
+    async (_languageId: string, articleId: string) => {
+      setCompletedArticles((prev) => {
+        if (prev.some((c) => c.articleId === articleId)) return prev;
+        const entry: CompletedArticle = { articleId, completedAt: new Date().toISOString() };
+        const next = [...prev, entry];
+        AsyncStorage.setItem(keys.completedArticles, JSON.stringify(next)).catch(() => {});
+        return next;
+      });
+    },
+    [keys.completedArticles]
+  );
 
   return (
     <ProgressContext.Provider

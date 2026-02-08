@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '../constants/theme';
+import { useAuth } from './AuthContext';
 
 export type BookmarkItem = {
   languageId: string;
@@ -19,24 +20,36 @@ type BookmarksContextType = {
 
 const BookmarksContext = createContext<BookmarksContextType | undefined>(undefined);
 
+function getBookmarksKey(userId: string | null) {
+  const suffix = userId ?? 'guest';
+  return `${STORAGE_KEYS.BOOKMARKS}:${suffix}`;
+}
+
 export function BookmarksProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
   const [bookmarks, setBookmarks] = useState<BookmarkItem[]>([]);
+
+  const bookmarksKey = useMemo(() => getBookmarksKey(user?.id ?? null), [user?.id]);
 
   useEffect(() => {
     (async () => {
       try {
-        const raw = await AsyncStorage.getItem(STORAGE_KEYS.BOOKMARKS);
+        const raw = await AsyncStorage.getItem(bookmarksKey);
         if (raw) setBookmarks(JSON.parse(raw));
+        else setBookmarks([]);
       } catch (e) {
         __DEV__ && console.warn('Bookmarks load failed', e);
       }
     })();
-  }, []);
+  }, [bookmarksKey]);
 
-  const persist = useCallback(async (next: BookmarkItem[]) => {
-    setBookmarks(next);
-    await AsyncStorage.setItem(STORAGE_KEYS.BOOKMARKS, JSON.stringify(next));
-  }, []);
+  const persist = useCallback(
+    async (next: BookmarkItem[]) => {
+      setBookmarks(next);
+      await AsyncStorage.setItem(bookmarksKey, JSON.stringify(next));
+    },
+    [bookmarksKey]
+  );
 
   const isBookmarked = useCallback(
     (articleId: string) => bookmarks.some((b) => b.articleId === articleId),
